@@ -930,8 +930,32 @@ body {
   padding-top: 0.5rem;
 }
 
+.edit-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.edit-timestamp-input {
+  width: 60px;
+  padding: 0.5rem 0.5rem;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background-color: #16213e;
+  color: #e94560;
+  font-size: 0.9rem;
+  font-family: monospace;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.edit-timestamp-input:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
 .edit-title-input {
-  width: 100%;
+  flex: 1;
   padding: 0.5rem 0.75rem;
   border: 1px solid #0f3460;
   border-radius: 4px;

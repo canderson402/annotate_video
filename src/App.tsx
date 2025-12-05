@@ -105,14 +105,30 @@ function AnnotationItem({ annotation, onPlay, onDelete, onUpdate }: AnnotationIt
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(annotation.title);
   const [editDescription, setEditDescription] = useState(annotation.description || '');
+  const [editTimestamp, setEditTimestamp] = useState(formatTime(annotation.timestamp));
 
   const hasDescription = annotation.description && annotation.description.trim().length > 0;
   const canExpand = hasDescription;
 
+  // Parse time string (m:ss or mm:ss) to seconds
+  const parseTime = (timeStr: string): number | null => {
+    const match = timeStr.trim().match(/^(\d+):(\d{1,2})$/);
+    if (match) {
+      const mins = parseInt(match[1], 10);
+      const secs = parseInt(match[2], 10);
+      if (secs < 60) {
+        return mins * 60 + secs;
+      }
+    }
+    return null;
+  };
+
   const handleSave = () => {
+    const newTimestamp = parseTime(editTimestamp);
     onUpdate(annotation.id, {
       title: (editTitle || '').trim() || annotation.title,
       description: (editDescription || '').trim() || undefined,
+      ...(newTimestamp !== null ? { timestamp: newTimestamp } : {}),
     });
     setIsEditing(false);
   };
@@ -120,6 +136,7 @@ function AnnotationItem({ annotation, onPlay, onDelete, onUpdate }: AnnotationIt
   const handleCancel = () => {
     setEditTitle(annotation.title);
     setEditDescription(annotation.description || '');
+    setEditTimestamp(formatTime(annotation.timestamp));
     setIsEditing(false);
     setIsExpanded(false);
   };
@@ -164,13 +181,23 @@ function AnnotationItem({ annotation, onPlay, onDelete, onUpdate }: AnnotationIt
         <div className="annotation-details">
           {isEditing ? (
             <div className="edit-form">
-              <input
-                type="text"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="Title"
-                className="edit-title-input"
-              />
+              <div className="edit-row">
+                <input
+                  type="text"
+                  value={editTimestamp}
+                  onChange={(e) => setEditTimestamp(e.target.value)}
+                  placeholder="0:00"
+                  className="edit-timestamp-input"
+                  title="Timestamp (m:ss)"
+                />
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="Title"
+                  className="edit-title-input"
+                />
+              </div>
               <textarea
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
