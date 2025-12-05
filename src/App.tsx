@@ -582,8 +582,11 @@ function App() {
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
+  const [saveFolderId, setSaveFolderId] = useState<string | null>(null);
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [showNewFolderInSaveDialog, setShowNewFolderInSaveDialog] = useState(false);
+  const [newFolderNameInSaveDialog, setNewFolderNameInSaveDialog] = useState('');
 
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
   const [customRatio, setCustomRatio] = useState('16:9');
@@ -603,6 +606,7 @@ function App() {
 
   // Import/Export state
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [pendingImportData, setPendingImportData] = useState<AppData | null>(null);
   const [pendingImportVideo, setPendingImportVideo] = useState<SavedVideo | null>(null);
   const [importTargetFolderId, setImportTargetFolderId] = useState<string | null>(null);
@@ -828,10 +832,27 @@ function App() {
 
   // Video operations
   const saveVideo = () => {
-    if ((!videoId && !localVideoUrl) || !saveTitle.trim() || !selectedFolderId) return;
+    if ((!videoId && !localVideoUrl) || !saveTitle.trim()) return;
+
+    let targetFolderId = saveFolderId;
+
+    // If no folder selected, create a default "Saved Videos" folder
+    if (!targetFolderId) {
+      const newFolder: Folder = {
+        id: Date.now().toString(),
+        name: 'Saved Videos',
+        parentId: null,
+        isExpanded: true,
+      };
+      setAppData(prev => ({
+        ...prev,
+        folders: [...prev.folders, newFolder],
+      }));
+      targetFolderId = newFolder.id;
+    }
 
     const savedVideo: SavedVideo = {
-      id: `${selectedFolderId}/${Date.now()}`,
+      id: `${targetFolderId}/${Date.now()}`,
       videoId: videoId || '',
       title: saveTitle.trim(),
       url: localVideoUrl || videoUrl,
@@ -848,8 +869,98 @@ function App() {
     }));
 
     setCurrentVideo(savedVideo);
+    setSelectedFolderId(targetFolderId);
     setShowSaveDialog(false);
     setSaveTitle('');
+    setSaveFolderId(null);
+    setShowNewFolderInSaveDialog(false);
+    setNewFolderNameInSaveDialog('');
+  };
+
+  // Open save dialog and initialize folder selection
+  const openSaveDialog = () => {
+    // If editing existing video, pre-fill the title and folder
+    if (currentVideo) {
+      setSaveTitle(currentVideo.title);
+      // Extract folder ID from video ID (format: folderId/timestamp)
+      const folderIdFromVideo = currentVideo.id.split('/').slice(0, -1).join('/');
+      setSaveFolderId(folderIdFromVideo || selectedFolderId || (appData.folders.length > 0 ? appData.folders[0].id : null));
+    } else {
+      setSaveTitle('');
+      setSaveFolderId(selectedFolderId || (appData.folders.length > 0 ? appData.folders[0].id : null));
+    }
+    setShowSaveDialog(true);
+  };
+
+  // Update existing video in place
+  const updateExistingVideo = () => {
+    if (!currentVideo || !saveTitle.trim()) return;
+
+    let targetFolderId = saveFolderId;
+
+    // If no folder selected, create a default folder
+    if (!targetFolderId) {
+      const newFolder: Folder = {
+        id: Date.now().toString(),
+        name: 'Saved Videos',
+        parentId: null,
+        isExpanded: true,
+      };
+      setAppData(prev => ({
+        ...prev,
+        folders: [...prev.folders, newFolder],
+      }));
+      targetFolderId = newFolder.id;
+    }
+
+    // Check if folder changed
+    const currentFolderId = currentVideo.id.split('/').slice(0, -1).join('/');
+    const folderChanged = currentFolderId !== targetFolderId;
+
+    // Create updated video
+    const updatedVideo: SavedVideo = {
+      ...currentVideo,
+      id: folderChanged ? `${targetFolderId}/${Date.now()}` : currentVideo.id,
+      title: saveTitle.trim(),
+      generalNotes,
+      annotations,
+    };
+
+    setAppData(prev => ({
+      ...prev,
+      videos: prev.videos.map(v =>
+        v.id === currentVideo.id ? updatedVideo : v
+      ),
+    }));
+
+    setCurrentVideo(updatedVideo);
+    if (folderChanged) {
+      setSelectedFolderId(targetFolderId);
+    }
+    setShowSaveDialog(false);
+    setSaveTitle('');
+    setSaveFolderId(null);
+    setShowNewFolderInSaveDialog(false);
+    setNewFolderNameInSaveDialog('');
+  };
+
+  // Create new folder from save dialog
+  const createFolderInSaveDialog = () => {
+    if (!newFolderNameInSaveDialog.trim()) return;
+
+    const newFolder: Folder = {
+      id: Date.now().toString(),
+      name: newFolderNameInSaveDialog.trim(),
+      parentId: null,
+      isExpanded: true,
+    };
+    setAppData(prev => ({
+      ...prev,
+      folders: [...prev.folders, newFolder],
+    }));
+    setSaveFolderId(newFolder.id);
+    setShowNewFolderInSaveDialog(false);
+    setNewFolderNameInSaveDialog('');
   };
 
   const updateCurrentVideo = () => {
@@ -913,11 +1024,31 @@ function App() {
     }
   };
 
-  // Export current session as JSON file
+  // Clear everything and start new
+  const handleNew = () => {
+    // Revoke local video URL to prevent memory leaks
+    if (localVideoUrl) {
+      URL.revokeObjectURL(localVideoUrl);
+    }
+    setVideoId(null);
+    setVideoUrl('');
+    setLocalVideoUrl(null);
+    setLocalVideoName('');
+    setGeneralNotes('');
+    setAnnotations([]);
+    setCurrentVideo(null);
+  };
+
+  // Show export modal
   const handleExport = () => {
-    // Export current session - whatever is currently loaded
+    setShowExportModal(true);
+  };
+
+  // Export current video as JSON file
+  const exportCurrentVideo = () => {
     if (!videoId && !localVideoUrl) {
       alert('No video loaded to export');
+      setShowExportModal(false);
       return;
     }
 
@@ -948,6 +1079,34 @@ function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setShowExportModal(false);
+  };
+
+  // Export entire library as JSON file
+  const exportEntireLibrary = () => {
+    if (appData.folders.length === 0 && appData.videos.length === 0) {
+      alert('Library is empty - nothing to export');
+      setShowExportModal(false);
+      return;
+    }
+
+    const exportData = {
+      folders: appData.folders,
+      videos: appData.videos,
+      exportedAt: new Date().toISOString(),
+      version: 1,
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `library-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowExportModal(false);
   };
 
   // Share via URL - compress and encode data
@@ -1385,6 +1544,13 @@ function App() {
         <h1>Scorevision Annotate</h1>
         <div className="header-actions">
           <button
+            onClick={handleNew}
+            className="header-btn new-btn"
+            title="Start new annotation"
+          >
+            New
+          </button>
+          <button
             onClick={handleShare}
             className="header-btn share-btn"
             title="Share via URL"
@@ -1620,9 +1786,9 @@ function App() {
                 >
                   📁 File
                 </button>
-                {(videoId || localVideoUrl) && !currentVideo && selectedFolderId && (
-                  <button onClick={() => setShowSaveDialog(true)} className="save-video-btn">
-                    Save
+                {(videoId || localVideoUrl) && (
+                  <button onClick={openSaveDialog} className="save-video-btn">
+                    {currentVideo ? 'Save As' : 'Save'}
                   </button>
                 )}
               </div>
@@ -1711,19 +1877,98 @@ function App() {
       {/* Save Dialog */}
       {showSaveDialog && (
         <div className="modal-overlay" onClick={() => setShowSaveDialog(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Save Video to Folder</h3>
-            <p>Saving to: {appData.folders.find(f => f.id === selectedFolderId)?.name}</p>
-            <input
-              type="text"
-              placeholder="Video title..."
-              value={saveTitle}
-              onChange={(e) => setSaveTitle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && saveVideo()}
-              autoFocus
-            />
+          <div className="modal save-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{currentVideo ? 'Edit Video' : 'Save Video'}</h3>
+            <div className="save-form">
+              <label>Title</label>
+              <input
+                type="text"
+                placeholder="Video title..."
+                value={saveTitle}
+                onChange={(e) => setSaveTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveVideo()}
+                autoFocus
+              />
+
+              <label>Folder</label>
+              {appData.folders.length > 0 ? (
+                <div className="folder-select-row">
+                  <select
+                    value={saveFolderId || ''}
+                    onChange={(e) => setSaveFolderId(e.target.value || null)}
+                    className="folder-select"
+                  >
+                    {appData.folders.map(folder => (
+                      <option key={folder.id} value={folder.id}>{folder.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewFolderInSaveDialog(true)}
+                    className="new-folder-inline-btn"
+                    title="Create new folder"
+                  >
+                    +
+                  </button>
+                </div>
+              ) : (
+                <div className="no-folders-save">
+                  <p>No folders yet.</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewFolderInSaveDialog(true)}
+                    className="create-folder-btn"
+                  >
+                    Create Folder
+                  </button>
+                  <p className="save-hint">Or save to auto-create "Saved Videos" folder</p>
+                </div>
+              )}
+
+              {showNewFolderInSaveDialog && (
+                <div className="new-folder-inline">
+                  <input
+                    type="text"
+                    placeholder="New folder name..."
+                    value={newFolderNameInSaveDialog}
+                    onChange={(e) => setNewFolderNameInSaveDialog(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') createFolderInSaveDialog();
+                      if (e.key === 'Escape') {
+                        setShowNewFolderInSaveDialog(false);
+                        setNewFolderNameInSaveDialog('');
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <button onClick={createFolderInSaveDialog} className="confirm-btn">✓</button>
+                  <button
+                    onClick={() => {
+                      setShowNewFolderInSaveDialog(false);
+                      setNewFolderNameInSaveDialog('');
+                    }}
+                    className="cancel-inline-btn"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="modal-actions">
-              <button onClick={saveVideo} className="save-btn">Save</button>
+              {currentVideo ? (
+                <>
+                  <button onClick={updateExistingVideo} className="save-btn" disabled={!saveTitle.trim()}>
+                    Update
+                  </button>
+                  <button onClick={saveVideo} className="save-as-btn" disabled={!saveTitle.trim()}>
+                    Save as New
+                  </button>
+                </>
+              ) : (
+                <button onClick={saveVideo} className="save-btn" disabled={!saveTitle.trim()}>
+                  Save
+                </button>
+              )}
               <button onClick={() => setShowSaveDialog(false)} className="cancel-btn">Cancel</button>
             </div>
           </div>
@@ -1844,6 +2089,45 @@ function App() {
                 </button>
               ) : null}
               <button onClick={handleCancelImport} className="cancel-btn">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="modal-overlay" onClick={() => setShowExportModal(false)}>
+          <div className="modal export-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Export</h3>
+            <p className="export-info">Choose what to export:</p>
+            <div className="export-options">
+              <button
+                onClick={exportCurrentVideo}
+                className="export-option-btn"
+                disabled={!videoId && !localVideoUrl}
+              >
+                <span className="export-option-icon">🎬</span>
+                <span className="export-option-text">
+                  <strong>Current Video</strong>
+                  <small>Export the currently loaded video with its annotations</small>
+                </span>
+              </button>
+              <button
+                onClick={exportEntireLibrary}
+                className="export-option-btn"
+                disabled={appData.folders.length === 0 && appData.videos.length === 0}
+              >
+                <span className="export-option-icon">📚</span>
+                <span className="export-option-text">
+                  <strong>Entire Library</strong>
+                  <small>Export all folders and saved videos ({appData.videos.length} video{appData.videos.length !== 1 ? 's' : ''}, {appData.folders.length} folder{appData.folders.length !== 1 ? 's' : ''})</small>
+                </span>
+              </button>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowExportModal(false)} className="cancel-btn">
                 Cancel
               </button>
             </div>
