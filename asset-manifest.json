@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/annotate_video/static/css/main.ebde25f9.css",
+    "main.js": "/annotate_video/static/js/main.3c08706c.js",
+    "static/js/453.05595332.chunk.js": "/annotate_video/static/js/453.05595332.chunk.js",
+    "index.html": "/annotate_video/index.html",
+    "main.ebde25f9.css.map": "/annotate_video/static/css/main.ebde25f9.css.map",
+    "main.3c08706c.js.map": "/annotate_video/static/js/main.3c08706c.js.map",
+    "453.05595332.chunk.js.map": "/annotate_video/static/js/453.05595332.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.ebde25f9.css",
+    "static/js/main.3c08706c.js"
+  ]
+}
