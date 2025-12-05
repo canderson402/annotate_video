@@ -1,6 +1,22 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import YouTube, { YouTubePlayer, YouTubeEvent } from 'react-youtube';
+import pako from 'pako';
 import './App.css';
+
+// Compact format for URL sharing (short keys to save space)
+interface CompactAnnotation {
+  t: number;  // timestamp
+  n: string;  // title (note)
+  d?: string; // description
+}
+
+interface CompactShareData {
+  v: string;  // videoId or URL
+  t: string;  // title
+  g: string;  // generalNotes
+  a: CompactAnnotation[]; // annotations
+  l?: boolean; // isLocalFile
+}
 
 // Data structures
 interface Annotation {
@@ -561,6 +577,8 @@ function App() {
   // Import/Export state
   const [showImportModal, setShowImportModal] = useState(false);
   const [pendingImportData, setPendingImportData] = useState<AppData | null>(null);
+  const [pendingImportVideo, setPendingImportVideo] = useState<SavedVideo | null>(null);
+  const [importTargetFolderId, setImportTargetFolderId] = useState<string | null>(null);
   const [localVideosToLink, setLocalVideosToLink] = useState<SavedVideo[]>([]);
   const [currentLinkingVideo, setCurrentLinkingVideo] = useState<SavedVideo | null>(null);
   const [linkedLocalVideos, setLinkedLocalVideos] = useState<Map<string, string>>(new Map());
@@ -822,11 +840,36 @@ function App() {
 
   const loadVideo = (video: SavedVideo) => {
     setCurrentVideo(video);
-    setVideoUrl(video.url);
-    setVideoId(video.videoId);
     setGeneralNotes(video.generalNotes);
     setAnnotations(video.annotations);
     setVideoTitle(video.title);
+
+    if (video.isLocalFile) {
+      // Local video - check if URL is a blob URL (already linked) or needs linking
+      if (video.url && video.url.startsWith('blob:')) {
+        setLocalVideoUrl(video.url);
+        setLocalVideoName(video.localFileName || 'Local Video');
+        setVideoId(null);
+        setVideoUrl('');
+      } else {
+        // Local video needs to be re-linked - prompt user
+        setLocalVideoUrl(null);
+        setLocalVideoName(video.localFileName || '');
+        setVideoId(null);
+        setVideoUrl('');
+        // Show prompt to link the video
+        setLocalVideosToLink([video]);
+        setCurrentLinkingVideo(video);
+        setLinkedLocalVideos(new Map());
+        setShowImportModal(true);
+      }
+    } else {
+      // YouTube video
+      setVideoUrl(video.url);
+      setVideoId(video.videoId);
+      setLocalVideoUrl(null);
+      setLocalVideoName('');
+    }
   };
 
   const deleteVideo = (id: string) => {
@@ -843,23 +886,164 @@ function App() {
     }
   };
 
-  // Export data as JSON file
+  // Export current session as JSON file
   const handleExport = () => {
-    const exportData = {
-      ...appData,
-      exportedAt: new Date().toISOString(),
-      version: 1,
+    // Export current session - whatever is currently loaded
+    if (!videoId && !localVideoUrl) {
+      alert('No video loaded to export');
+      return;
+    }
+
+    const sessionVideo: SavedVideo = {
+      id: `export_${Date.now()}`,
+      videoId: videoId || '',
+      title: localVideoName || 'Exported Video',
+      url: localVideoUrl || videoUrl,
+      generalNotes,
+      annotations,
+      createdAt: Date.now(),
+      isLocalFile: !!localVideoUrl,
+      localFileName: localVideoName || undefined,
     };
+
+    const exportData = {
+      video: sessionVideo,
+      exportedAt: new Date().toISOString(),
+      version: 2,
+    };
+
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `youtube-notes-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `video-notes-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  // Share via URL - compress and encode data
+  const handleShare = async () => {
+    if (!videoId && !localVideoUrl) {
+      alert('No video loaded to share');
+      return;
+    }
+
+    // Create compact data format
+    const compactData: CompactShareData = {
+      v: videoId || '',
+      t: localVideoName || 'Shared Video',
+      g: generalNotes,
+      a: annotations.map(ann => ({
+        t: ann.timestamp,
+        n: ann.title,
+        ...(ann.description ? { d: ann.description } : {}),
+      })),
+      ...(localVideoUrl ? { l: true } : {}),
+    };
+
+    try {
+      // Compress and encode
+      const jsonStr = JSON.stringify(compactData);
+      const compressed = pako.deflate(jsonStr);
+      // Convert Uint8Array to base64
+      let binaryStr = '';
+      for (let i = 0; i < compressed.length; i++) {
+        binaryStr += String.fromCharCode(compressed[i]);
+      }
+      const base64 = btoa(binaryStr);
+      // Make URL-safe
+      const urlSafe = base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      const shareUrl = `${window.location.origin}${window.location.pathname}?d=${urlSafe}`;
+
+      // Check URL length
+      if (shareUrl.length > 8000) {
+        alert(`URL is too long (${shareUrl.length} chars). Try reducing notes or annotations, or use Export instead.`);
+        return;
+      }
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(shareUrl);
+      alert(`Share URL copied to clipboard! (${shareUrl.length} characters)\n\nAnyone with this link can view the video with your annotations.`);
+    } catch (err) {
+      console.error('Share error:', err);
+      alert('Failed to create share URL. Try using Export instead.');
+    }
+  };
+
+  // Load shared data from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const data = params.get('d');
+
+    if (data) {
+      try {
+        // Decode URL-safe base64
+        const base64 = data.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+        const binaryStr = atob(padded);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        // Decompress
+        const decompressed = pako.inflate(bytes, { to: 'string' });
+        const compactData: CompactShareData = JSON.parse(decompressed);
+
+        // Load the shared data
+        setGeneralNotes(compactData.g);
+        setAnnotations(compactData.a.map((ann, idx) => ({
+          id: `shared_${idx}`,
+          timestamp: ann.t,
+          title: ann.n,
+          description: ann.d,
+        })));
+
+        if (compactData.l) {
+          // Local video - prompt user to select the file
+          const sharedVideo: SavedVideo = {
+            id: `shared_${Date.now()}`,
+            videoId: '',
+            title: compactData.t,
+            url: '',
+            generalNotes: compactData.g,
+            annotations: compactData.a.map((ann, idx) => ({
+              id: `shared_${idx}`,
+              timestamp: ann.t,
+              title: ann.n,
+              description: ann.d,
+            })),
+            createdAt: Date.now(),
+            isLocalFile: true,
+            localFileName: compactData.t,
+          };
+          setLocalVideoName(compactData.t);
+          setVideoId(null);
+          setVideoUrl('');
+          setLocalVideoUrl(null);
+          // Show import modal to prompt for local video file
+          setLocalVideosToLink([sharedVideo]);
+          setCurrentLinkingVideo(sharedVideo);
+          setLinkedLocalVideos(new Map());
+          setShowImportModal(true);
+        } else {
+          // YouTube video
+          setVideoId(compactData.v);
+          setVideoUrl(`https://youtube.com/watch?v=${compactData.v}`);
+          setLocalVideoUrl(null);
+          setLocalVideoName('');
+        }
+
+        // Clear the URL parameter without reload
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (err) {
+        console.error('Failed to load shared data:', err);
+      }
+    }
+  }, []);
 
   // Import data from JSON file
   const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -870,8 +1054,22 @@ function App() {
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
-        if (data.folders && data.videos) {
-          // Check for local videos that need linking
+
+        // Handle new single-video format (version 2)
+        if (data.video && data.version === 2) {
+          const video = data.video as SavedVideo;
+          setPendingImportVideo(video);
+          setImportTargetFolderId(appData.folders.length > 0 ? appData.folders[0].id : null);
+
+          if (video.isLocalFile) {
+            setLocalVideosToLink([video]);
+            setCurrentLinkingVideo(video);
+            setLinkedLocalVideos(new Map());
+          }
+          setShowImportModal(true);
+        }
+        // Handle old full backup format (version 1)
+        else if (data.folders && data.videos) {
           const localVideos = data.videos.filter((v: SavedVideo) => v.isLocalFile);
 
           if (localVideos.length > 0) {
@@ -881,7 +1079,6 @@ function App() {
             setLinkedLocalVideos(new Map());
             setShowImportModal(true);
           } else {
-            // No local videos, import directly
             setAppData({ folders: data.folders, videos: data.videos });
           }
         } else {
@@ -937,19 +1134,93 @@ function App() {
 
   // Complete the import process
   const handleCompleteImport = () => {
-    if (!pendingImportData) return;
+    if (pendingImportVideo) {
+      // Single video import (version 2 format)
+      let targetFolderId = importTargetFolderId;
 
-    // Update videos with linked local files
-    const updatedVideos = pendingImportData.videos.map(video => {
-      if (video.isLocalFile && linkedLocalVideos.has(video.id)) {
-        return { ...video, url: linkedLocalVideos.get(video.id)! };
+      // If no folder selected and no folders exist, create a default "Imported" folder
+      if (!targetFolderId) {
+        const newFolder: Folder = {
+          id: Date.now().toString(),
+          name: 'Imported',
+          parentId: null,
+          isExpanded: true,
+        };
+        setAppData(prev => ({
+          ...prev,
+          folders: [...prev.folders, newFolder],
+        }));
+        targetFolderId = newFolder.id;
       }
-      return video;
-    });
 
-    setAppData({ folders: pendingImportData.folders, videos: updatedVideos });
+      // Create the video with the target folder
+      const linkedUrl = linkedLocalVideos.get(pendingImportVideo.id);
+      const newVideo: SavedVideo = {
+        ...pendingImportVideo,
+        id: `${targetFolderId}/${Date.now()}`,
+        url: linkedUrl || pendingImportVideo.url,
+      };
+
+      setAppData(prev => ({
+        ...prev,
+        videos: [...prev.videos, newVideo],
+      }));
+
+      // Load the video
+      if (newVideo.isLocalFile && linkedUrl) {
+        setLocalVideoUrl(linkedUrl);
+        setLocalVideoName(newVideo.localFileName || 'Local Video');
+        setVideoId(null);
+        setVideoUrl('');
+      } else if (!newVideo.isLocalFile) {
+        setVideoUrl(newVideo.url);
+        setVideoId(newVideo.videoId);
+        setLocalVideoUrl(null);
+        setLocalVideoName('');
+      }
+      setGeneralNotes(newVideo.generalNotes);
+      setAnnotations(newVideo.annotations);
+      setCurrentVideo(newVideo);
+      setSelectedFolderId(targetFolderId);
+    } else if (pendingImportData) {
+      // Bulk import from file (version 1 format)
+      const updatedVideos = pendingImportData.videos.map(video => {
+        if (video.isLocalFile && linkedLocalVideos.has(video.id)) {
+          return { ...video, url: linkedLocalVideos.get(video.id)! };
+        }
+        return video;
+      });
+
+      setAppData({ folders: pendingImportData.folders, videos: updatedVideos });
+    } else if (localVideosToLink.length === 1 && currentVideo) {
+      // Single video re-linking (when clicking on an unlinked local video)
+      const linkedUrl = linkedLocalVideos.get(localVideosToLink[0].id);
+      if (linkedUrl) {
+        setAppData(prev => ({
+          ...prev,
+          videos: prev.videos.map(v =>
+            v.id === localVideosToLink[0].id ? { ...v, url: linkedUrl } : v
+          ),
+        }));
+        setLocalVideoUrl(linkedUrl);
+        setLocalVideoName(localVideosToLink[0].localFileName || 'Local Video');
+      }
+    } else if (localVideosToLink.length === 1 && !currentVideo && !pendingImportVideo && !pendingImportData) {
+      // Shared local video from URL - just load it without saving to folder
+      const linkedUrl = linkedLocalVideos.get(localVideosToLink[0].id);
+      if (linkedUrl) {
+        setLocalVideoUrl(linkedUrl);
+        setLocalVideoName(localVideosToLink[0].localFileName || 'Local Video');
+        setVideoId(null);
+        setVideoUrl('');
+        // generalNotes and annotations are already set from the URL loading
+      }
+    }
+
     setShowImportModal(false);
     setPendingImportData(null);
+    setPendingImportVideo(null);
+    setImportTargetFolderId(null);
     setLocalVideosToLink([]);
     setCurrentLinkingVideo(null);
     setLinkedLocalVideos(new Map());
@@ -962,6 +1233,8 @@ function App() {
 
     setShowImportModal(false);
     setPendingImportData(null);
+    setPendingImportVideo(null);
+    setImportTargetFolderId(null);
     setLocalVideosToLink([]);
     setCurrentLinkingVideo(null);
     setLinkedLocalVideos(new Map());
@@ -1083,6 +1356,36 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>YouTube Notes</h1>
+        <div className="header-actions">
+          <button
+            onClick={handleShare}
+            className="header-btn share-btn"
+            title="Share via URL"
+          >
+            Share
+          </button>
+          <button
+            onClick={handleExport}
+            className="header-btn"
+            title="Export current session"
+          >
+            Export
+          </button>
+          <input
+            type="file"
+            ref={importFileInputRef}
+            accept=".json"
+            onChange={handleImportFile}
+            style={{ display: 'none' }}
+          />
+          <button
+            onClick={() => importFileInputRef.current?.click()}
+            className="header-btn"
+            title="Import video notes"
+          >
+            Import
+          </button>
+        </div>
       </header>
 
       <div className="app-body">
@@ -1090,36 +1393,13 @@ function App() {
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <div className="sidebar-header">
             <h3>Library</h3>
-            <div className="sidebar-actions">
-              <button
-                onClick={() => setShowNewFolderInput(true)}
-                className="new-folder-btn"
-                title="New folder"
-              >
-                + Folder
-              </button>
-              <button
-                onClick={handleExport}
-                className="export-btn"
-                title="Export data"
-              >
-                Export
-              </button>
-              <input
-                type="file"
-                ref={importFileInputRef}
-                accept=".json"
-                onChange={handleImportFile}
-                style={{ display: 'none' }}
-              />
-              <button
-                onClick={() => importFileInputRef.current?.click()}
-                className="import-btn"
-                title="Import data"
-              >
-                Import
-              </button>
-            </div>
+            <button
+              onClick={() => setShowNewFolderInput(true)}
+              className="new-folder-btn"
+              title="New folder"
+            >
+              + Folder
+            </button>
           </div>
 
           {showNewFolderInput && (
@@ -1427,17 +1707,52 @@ function App() {
       {showImportModal && (
         <div className="modal-overlay" onClick={handleCancelImport}>
           <div className="modal import-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Import Data</h3>
+            <h3>{pendingImportData ? 'Import Full Backup' : pendingImportVideo ? 'Import Video' : 'Link Local Video'}</h3>
+
+            {/* Single video import - show video info and folder selection */}
+            {pendingImportVideo && (
+              <div className="import-video-info">
+                <p className="link-video-title">{pendingImportVideo.title}</p>
+                <p className="import-info">
+                  {pendingImportVideo.annotations.length} annotation(s) • {pendingImportVideo.generalNotes ? 'Has notes' : 'No notes'}
+                </p>
+
+                {/* Folder selection */}
+                <div className="folder-select-section">
+                  <label>Import to folder:</label>
+                  {appData.folders.length > 0 ? (
+                    <select
+                      value={importTargetFolderId || ''}
+                      onChange={(e) => setImportTargetFolderId(e.target.value || null)}
+                      className="folder-select"
+                    >
+                      {appData.folders.map(folder => (
+                        <option key={folder.id} value={folder.id}>{folder.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="no-folders-note">No folders exist. A new "Imported" folder will be created.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {currentLinkingVideo ? (
               <>
                 <p className="import-info">
-                  Found {localVideosToLink.length} local video(s) that need to be linked to files on your computer.
+                  {pendingImportData
+                    ? `Found ${localVideosToLink.length} local video(s) that need to be linked to files on your computer.`
+                    : pendingImportVideo
+                    ? 'This is a local video. Please select the video file from your computer.'
+                    : 'This video is stored locally. Please select the video file from your computer.'}
                 </p>
                 <div className="link-video-section">
-                  <p className="link-video-label">
-                    <strong>Video {localVideosToLink.findIndex(v => v.id === currentLinkingVideo.id) + 1} of {localVideosToLink.length}:</strong>
-                  </p>
-                  <p className="link-video-title">{currentLinkingVideo.title}</p>
+                  {localVideosToLink.length > 1 && (
+                    <p className="link-video-label">
+                      <strong>Video {localVideosToLink.findIndex(v => v.id === currentLinkingVideo.id) + 1} of {localVideosToLink.length}:</strong>
+                    </p>
+                  )}
+                  {!pendingImportVideo && <p className="link-video-title">{currentLinkingVideo.title}</p>}
                   {currentLinkingVideo.localFileName && (
                     <p className="link-video-filename">
                       Original file: <code>{currentLinkingVideo.localFileName}</code>
@@ -1457,26 +1772,34 @@ function App() {
                     >
                       Select Video File
                     </button>
-                    <button
-                      onClick={handleSkipLinkVideo}
-                      className="skip-btn"
-                    >
-                      Skip
-                    </button>
+                    {localVideosToLink.length > 1 && (
+                      <button
+                        onClick={handleSkipLinkVideo}
+                        className="skip-btn"
+                      >
+                        Skip
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div className="import-progress">
-                  <p>
-                    Linked: {linkedLocalVideos.size} / {localVideosToLink.length}
-                  </p>
-                </div>
+                {localVideosToLink.length > 1 && (
+                  <div className="import-progress">
+                    <p>
+                      Linked: {linkedLocalVideos.size} / {localVideosToLink.length}
+                    </p>
+                  </div>
+                )}
               </>
             ) : (
               <>
-                <p className="import-ready">
-                  Ready to import. {linkedLocalVideos.size > 0 && `Linked ${linkedLocalVideos.size} of ${localVideosToLink.length} local videos.`}
-                </p>
-                {localVideosToLink.length > linkedLocalVideos.size && (
+                {!pendingImportVideo && (
+                  <p className="import-ready">
+                    {pendingImportData
+                      ? `Ready to import. ${linkedLocalVideos.size > 0 ? `Linked ${linkedLocalVideos.size} of ${localVideosToLink.length} local videos.` : ''}`
+                      : `Video linked successfully!`}
+                  </p>
+                )}
+                {pendingImportData && localVideosToLink.length > linkedLocalVideos.size && (
                   <p className="import-warning">
                     Note: {localVideosToLink.length - linkedLocalVideos.size} local video(s) were not linked and won't play until you reload them.
                   </p>
@@ -1484,11 +1807,15 @@ function App() {
               </>
             )}
             <div className="modal-actions">
-              {!currentLinkingVideo && (
+              {(pendingImportVideo && !currentLinkingVideo) || (!pendingImportVideo && !currentLinkingVideo) ? (
                 <button onClick={handleCompleteImport} className="save-btn">
-                  Complete Import
+                  {pendingImportData ? 'Complete Import' : pendingImportVideo ? 'Import' : 'Done'}
                 </button>
-              )}
+              ) : pendingImportVideo && !pendingImportVideo.isLocalFile ? (
+                <button onClick={handleCompleteImport} className="save-btn">
+                  Import
+                </button>
+              ) : null}
               <button onClick={handleCancelImport} className="cancel-btn">
                 Cancel
               </button>

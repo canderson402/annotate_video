@@ -2,6 +2,7 @@
   "name": "youtube-notes",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://canderson402.github.io/annotate_video",
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -12,6 +13,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "ajv": "^8.17.1",
+    "pako": "^2.1.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-scripts": "5.0.1",
@@ -23,7 +25,9 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
   },
   "eslintConfig": {
     "extends": [
@@ -42,5 +46,9 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@types/pako": "^2.0.4",
+    "gh-pages": "^6.3.0"
   }
 }

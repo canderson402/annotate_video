@@ -21,12 +21,44 @@ body {
   background-color: #16213e;
   padding: 0.75rem 2rem;
   border-bottom: 1px solid #0f3460;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .header h1 {
   color: #e94560;
   font-size: 1.25rem;
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.header-btn {
+  padding: 0.5rem 1rem;
+  background-color: #0f3460;
+  color: #eee;
+  border: 1px solid #e94560;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.header-btn:hover {
+  background-color: #e94560;
+}
+
+.header-btn.share-btn {
+  background-color: #4caf50;
+  border-color: #4caf50;
+}
+
+.header-btn.share-btn:hover {
+  background-color: #45a049;
 }
 
 /* App Body - Sidebar + Main */
@@ -1190,4 +1222,44 @@ body {
   color: #ffc107;
   font-size: 0.85rem;
   margin-bottom: 1rem;
+}
+
+.import-video-info {
+  background-color: #1a1a2e;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.folder-select-section {
+  margin-top: 1rem;
+}
+
+.folder-select-section label {
+  display: block;
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.folder-select {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background-color: #16213e;
+  color: #eee;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.folder-select:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.no-folders-note {
+  color: #888;
+  font-size: 0.85rem;
+  font-style: italic;
 }
