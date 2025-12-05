@@ -18,6 +18,29 @@ interface CompactShareData {
   l?: boolean; // isLocalFile
 }
 
+// Compact format for playlist URL sharing
+interface CompactPlaylistItem {
+  v: string;  // videoId
+  u: string;  // url
+  t: string;  // title
+  l?: boolean; // isLocalFile
+  f?: string;  // localFileName
+}
+
+interface CompactAmbientSound {
+  v: string;  // videoId
+  t: string;  // title
+}
+
+interface CompactPlaylistData {
+  n: string;  // name
+  i: CompactPlaylistItem[]; // items
+  lp: boolean; // loop
+  sr?: boolean; // startRandom
+  rt?: boolean; // randomTime
+  as?: CompactAmbientSound[]; // ambientSounds
+}
+
 // Data structures
 interface Annotation {
   id: string;
@@ -45,9 +68,37 @@ interface Folder {
   isExpanded: boolean;
 }
 
+interface PlaylistItem {
+  id: string;
+  videoId: string; // YouTube video ID or empty for local
+  url: string;
+  title: string;
+  isLocalFile?: boolean;
+  localFileName?: string;
+}
+
+interface Playlist {
+  id: string;
+  name: string;
+  items: PlaylistItem[];
+  createdAt: number;
+  loop: boolean;
+  startRandom?: boolean;
+  randomTime?: boolean; // Start each video at a random time
+}
+
+// Saved ambient sound
+interface AmbientSound {
+  id: string;
+  videoId: string;
+  title: string;
+}
+
 interface AppData {
   folders: Folder[];
   videos: SavedVideo[];
+  playlists: Playlist[];
+  ambientSounds?: AmbientSound[];
 }
 
 // Drag and drop types
@@ -80,12 +131,18 @@ function loadAppData(): AppData {
   const saved = localStorage.getItem('youtube-notes-data');
   if (saved) {
     try {
-      return JSON.parse(saved);
+      const data = JSON.parse(saved);
+      return {
+        folders: data.folders || [],
+        videos: data.videos || [],
+        playlists: data.playlists || [],
+        ambientSounds: data.ambientSounds || [],
+      };
     } catch {
-      return { folders: [], videos: [] };
+      return { folders: [], videos: [], playlists: [], ambientSounds: [] };
     }
   }
-  return { folders: [], videos: [] };
+  return { folders: [], videos: [], playlists: [], ambientSounds: [] };
 }
 
 function saveAppData(data: AppData) {
@@ -556,6 +613,43 @@ function VideoItem({ video, isSelected, onSelect, onDelete, onDragStart, onDragE
   );
 }
 
+// Playlist Sidebar Item Component
+interface PlaylistSidebarItemProps {
+  playlist: Playlist;
+  isActive: boolean;
+  onPlay: () => void;
+  onDelete: () => void;
+}
+
+function PlaylistSidebarItem({ playlist, isActive, onPlay, onDelete }: PlaylistSidebarItemProps) {
+  const [showActions, setShowActions] = useState(false);
+
+  return (
+    <div
+      className={`playlist-sidebar-item ${isActive ? 'active' : ''}`}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
+    >
+      <div className="playlist-sidebar-main" onClick={onPlay}>
+        <span className="playlist-icon">🎵</span>
+        <div className="playlist-info">
+          <span className="playlist-name">{playlist.name}</span>
+          <span className="playlist-count">{playlist.items.length} video{playlist.items.length !== 1 ? 's' : ''}</span>
+        </div>
+        {playlist.startRandom && <span className="shuffle-indicator" title="Random/shuffle enabled">🔀</span>}
+        {playlist.loop && <span className="loop-indicator" title="Loop enabled">🔁</span>}
+      </div>
+      {showActions && (
+        <div className="playlist-actions">
+          <button onClick={(e) => { e.stopPropagation(); onDelete(); }} title="Delete playlist">
+            ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Main App Component
 const ASPECT_RATIOS = [
   { label: '16:9', value: 16 / 9 },
@@ -607,6 +701,30 @@ function App() {
   // Import/Export state
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+
+  // Playlist state
+  const [activePlaylist, setActivePlaylist] = useState<Playlist | null>(null);
+  const [playlistIndex, setPlaylistIndex] = useState(0);
+  const [isPlaylistMode, setIsPlaylistMode] = useState(false);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null);
+  const [playlistName, setPlaylistName] = useState('');
+  const [sidebarTab, setSidebarTab] = useState<'annotations' | 'playlists'>('annotations');
+  const [fetchedVideoTitle, setFetchedVideoTitle] = useState<string>('');
+
+  // Audio Mixer state
+  const [mainVideoVolume, setMainVideoVolume] = useState(100);
+  const [mainVideoMuted, setMainVideoMuted] = useState(false);
+  const [ambientVideoId, setAmbientVideoId] = useState<string | null>(null); // Initial ID for creating player
+  const [currentAmbientId, setCurrentAmbientId] = useState<string | null>(null); // Current playing ID for UI
+  const [ambientVideoTitle, setAmbientVideoTitle] = useState('');
+  const [ambientVideoUrl, setAmbientVideoUrl] = useState('');
+  const [ambientVolume, setAmbientVolume] = useState(50);
+  const [ambientMuted, setAmbientMuted] = useState(false);
+  const [ambientPlaying, setAmbientPlaying] = useState(true);
+  const [showAmbientUrlInput, setShowAmbientUrlInput] = useState(false);
+  const ambientPlayerRef = useRef<YouTubePlayer | null>(null);
+
   const [pendingImportData, setPendingImportData] = useState<AppData | null>(null);
   const [pendingImportVideo, setPendingImportVideo] = useState<SavedVideo | null>(null);
   const [importTargetFolderId, setImportTargetFolderId] = useState<string | null>(null);
@@ -619,6 +737,7 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const linkVideoInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingRandomSeek = useRef<boolean>(false); // Flag to seek to random time after video loads
 
   const handleCustomRatioChange = (value: string) => {
     setCustomRatio(value);
@@ -742,6 +861,7 @@ function App() {
     const idsToDelete = getDescendantIds(id);
 
     setAppData(prev => ({
+      ...prev,
       folders: prev.folders.filter(f => !idsToDelete.includes(f.id)),
       videos: prev.videos.filter(v => !idsToDelete.some(fid => v.id.startsWith(fid + '/'))),
     }));
@@ -886,7 +1006,8 @@ function App() {
       const folderIdFromVideo = currentVideo.id.split('/').slice(0, -1).join('/');
       setSaveFolderId(folderIdFromVideo || selectedFolderId || (appData.folders.length > 0 ? appData.folders[0].id : null));
     } else {
-      setSaveTitle('');
+      // Use fetched YouTube title, local file name, or empty string
+      setSaveTitle(fetchedVideoTitle || localVideoName || '');
       setSaveFolderId(selectedFolderId || (appData.folders.length > 0 ? appData.folders[0].id : null));
     }
     setShowSaveDialog(true);
@@ -977,6 +1098,11 @@ function App() {
   };
 
   const loadVideo = (video: SavedVideo) => {
+    // Exit playlist mode when loading an annotation
+    setIsPlaylistMode(false);
+    setActivePlaylist(null);
+    setPlaylistIndex(0);
+
     setCurrentVideo(video);
     setGeneralNotes(video.generalNotes);
     setAnnotations(video.annotations);
@@ -1037,6 +1163,597 @@ function App() {
     setGeneralNotes('');
     setAnnotations([]);
     setCurrentVideo(null);
+    // Exit playlist mode
+    setIsPlaylistMode(false);
+    setActivePlaylist(null);
+    setPlaylistIndex(0);
+  };
+
+  // Playlist operations
+  const createPlaylist = (name: string) => {
+    const newPlaylist: Playlist = {
+      id: Date.now().toString(),
+      name: name.trim() || 'Untitled Playlist',
+      items: [],
+      createdAt: Date.now(),
+      loop: true,
+    };
+    setAppData(prev => ({
+      ...prev,
+      playlists: [...prev.playlists, newPlaylist],
+    }));
+    return newPlaylist;
+  };
+
+  const deletePlaylist = (id: string) => {
+    setAppData(prev => ({
+      ...prev,
+      playlists: prev.playlists.filter(p => p.id !== id),
+    }));
+    if (activePlaylist?.id === id) {
+      setActivePlaylist(null);
+      setIsPlaylistMode(false);
+      setPlaylistIndex(0);
+    }
+  };
+
+  const renamePlaylist = (id: string, name: string) => {
+    setAppData(prev => ({
+      ...prev,
+      playlists: prev.playlists.map(p =>
+        p.id === id ? { ...p, name: name.trim() || p.name } : p
+      ),
+    }));
+    if (activePlaylist?.id === id) {
+      setActivePlaylist(prev => prev ? { ...prev, name: name.trim() || prev.name } : null);
+    }
+  };
+
+  const togglePlaylistLoop = (id: string) => {
+    setAppData(prev => ({
+      ...prev,
+      playlists: prev.playlists.map(p =>
+        p.id === id ? { ...p, loop: !p.loop } : p
+      ),
+    }));
+    if (activePlaylist?.id === id) {
+      setActivePlaylist(prev => prev ? { ...prev, loop: !prev.loop } : null);
+    }
+  };
+
+  const addVideoToPlaylist = (playlistId: string, item: PlaylistItem) => {
+    setAppData(prev => ({
+      ...prev,
+      playlists: prev.playlists.map(p =>
+        p.id === playlistId ? { ...p, items: [...p.items, item] } : p
+      ),
+    }));
+    if (activePlaylist?.id === playlistId) {
+      setActivePlaylist(prev => prev ? { ...prev, items: [...prev.items, item] } : null);
+    }
+  };
+
+  // Add YouTube video to playlist with auto-fetched title
+  const addYouTubeToPlaylist = async (playlistId: string, youtubeUrl: string) => {
+    const id = extractVideoId(youtubeUrl);
+    if (!id) return;
+
+    // Add immediately with placeholder title
+    const itemId = Date.now().toString();
+    const item: PlaylistItem = {
+      id: itemId,
+      videoId: id,
+      url: youtubeUrl,
+      title: 'Loading...',
+    };
+    addVideoToPlaylist(playlistId, item);
+
+    // Fetch title and update
+    const title = await fetchYouTubeTitle(id);
+    if (title) {
+      // Update the item with the fetched title
+      setAppData(prev => ({
+        ...prev,
+        playlists: prev.playlists.map(p =>
+          p.id === playlistId
+            ? { ...p, items: p.items.map(i => i.id === itemId ? { ...i, title } : i) }
+            : p
+        ),
+      }));
+      if (activePlaylist?.id === playlistId) {
+        setActivePlaylist(prev =>
+          prev ? { ...prev, items: prev.items.map(i => i.id === itemId ? { ...i, title } : i) } : null
+        );
+      }
+    } else {
+      // If fetch failed, use a default title
+      const playlist = appData.playlists.find(p => p.id === playlistId);
+      const defaultTitle = `Video ${playlist ? playlist.items.length : 1}`;
+      setAppData(prev => ({
+        ...prev,
+        playlists: prev.playlists.map(p =>
+          p.id === playlistId
+            ? { ...p, items: p.items.map(i => i.id === itemId ? { ...i, title: defaultTitle } : i) }
+            : p
+        ),
+      }));
+      if (activePlaylist?.id === playlistId) {
+        setActivePlaylist(prev =>
+          prev ? { ...prev, items: prev.items.map(i => i.id === itemId ? { ...i, title: defaultTitle } : i) } : null
+        );
+      }
+    }
+  };
+
+  const removeVideoFromPlaylist = (playlistId: string, itemId: string) => {
+    setAppData(prev => ({
+      ...prev,
+      playlists: prev.playlists.map(p =>
+        p.id === playlistId ? { ...p, items: p.items.filter(i => i.id !== itemId) } : p
+      ),
+    }));
+    if (activePlaylist?.id === playlistId) {
+      setActivePlaylist(prev => {
+        if (!prev) return null;
+        const newItems = prev.items.filter(i => i.id !== itemId);
+        // Adjust index if needed
+        if (playlistIndex >= newItems.length && newItems.length > 0) {
+          setPlaylistIndex(newItems.length - 1);
+        }
+        return { ...prev, items: newItems };
+      });
+    }
+  };
+
+  const reorderPlaylistItem = (playlistId: string, fromIndex: number, toIndex: number) => {
+    setAppData(prev => ({
+      ...prev,
+      playlists: prev.playlists.map(p => {
+        if (p.id !== playlistId) return p;
+        const items = [...p.items];
+        const [removed] = items.splice(fromIndex, 1);
+        items.splice(toIndex, 0, removed);
+        return { ...p, items };
+      }),
+    }));
+    if (activePlaylist?.id === playlistId) {
+      setActivePlaylist(prev => {
+        if (!prev) return null;
+        const items = [...prev.items];
+        const [removed] = items.splice(fromIndex, 1);
+        items.splice(toIndex, 0, removed);
+        return { ...prev, items };
+      });
+    }
+  };
+
+  // Play a playlist (respects startRandom setting unless startIndex is explicitly provided)
+  const playPlaylist = (playlist: Playlist, startIndex?: number) => {
+    // Get the latest version of the playlist from appData in case it was updated
+    const currentPlaylist = appData.playlists.find(p => p.id === playlist.id) || playlist;
+
+    let actualStartIndex = startIndex ?? 0;
+
+    // If no startIndex provided and playlist has startRandom enabled, pick random
+    if (startIndex === undefined && currentPlaylist.startRandom && currentPlaylist.items.length > 0) {
+      actualStartIndex = Math.floor(Math.random() * currentPlaylist.items.length);
+    }
+
+    // Reset player state to force fresh load when switching playlists
+    setVideoId(null);
+    setVideoUrl('');
+    setLocalVideoUrl(null);
+    setLocalVideoName('');
+    playerRef.current = null;
+
+    setActivePlaylist(currentPlaylist);
+    setPlaylistIndex(actualStartIndex);
+    setIsPlaylistMode(true);
+
+    // Auto-play first ambient sound if none is currently playing
+    if (!currentAmbientId && appData.ambientSounds && appData.ambientSounds.length > 0) {
+      const firstAmbient = appData.ambientSounds[0];
+      setAmbientVideoId(firstAmbient.videoId);
+      setCurrentAmbientId(firstAmbient.videoId);
+      setAmbientVideoTitle(firstAmbient.title);
+      setAmbientPlaying(true);
+    }
+
+    // Load the video at the start index after a tick to ensure state is cleared
+    if (currentPlaylist.items.length > 0) {
+      const item = currentPlaylist.items[actualStartIndex];
+      // Set random seek flag if playlist has randomTime enabled
+      if (currentPlaylist.randomTime) {
+        pendingRandomSeek.current = true;
+      }
+      // Use setTimeout to ensure state clears before loading new video
+      setTimeout(() => {
+        setVideoId(item.videoId);
+        setVideoUrl(item.url);
+        setCurrentVideo(null);
+        setGeneralNotes('');
+        setAnnotations([]);
+      }, 0);
+    } else {
+      // Clear any existing video for empty playlists
+      setCurrentVideo(null);
+      setGeneralNotes('');
+      setAnnotations([]);
+    }
+  };
+
+  // Toggle startRandom setting for a playlist
+  const togglePlaylistStartRandom = (playlistId: string) => {
+    setAppData(prev => ({
+      ...prev,
+      playlists: prev.playlists.map(p =>
+        p.id === playlistId ? { ...p, startRandom: !p.startRandom } : p
+      ),
+    }));
+    // Update active playlist if it's the one being modified
+    if (activePlaylist?.id === playlistId) {
+      setActivePlaylist(prev => prev ? { ...prev, startRandom: !prev.startRandom } : null);
+    }
+  };
+
+  const togglePlaylistRandomTime = (playlistId: string) => {
+    setAppData(prev => ({
+      ...prev,
+      playlists: prev.playlists.map(p =>
+        p.id === playlistId ? { ...p, randomTime: !p.randomTime } : p
+      ),
+    }));
+    // Update active playlist if it's the one being modified
+    if (activePlaylist?.id === playlistId) {
+      setActivePlaylist(prev => prev ? { ...prev, randomTime: !prev.randomTime } : null);
+    }
+  };
+
+  // Load a playlist item into the player
+  const loadPlaylistItem = (item: PlaylistItem) => {
+    // Clear annotation state
+    setCurrentVideo(null);
+    setGeneralNotes('');
+    setAnnotations([]);
+
+    // Set flag for random time seek if enabled
+    const shouldRandomSeek = activePlaylist?.randomTime;
+    if (shouldRandomSeek) {
+      pendingRandomSeek.current = true;
+    }
+
+    if (item.isLocalFile) {
+      setLocalVideoUrl(item.url);
+      setLocalVideoName(item.localFileName || item.title);
+      setVideoId(null);
+      setVideoUrl('');
+    } else {
+      // If we already have a player instance and a video is loaded, use loadVideoById
+      // and DON'T update videoId state (which would change the key and remount)
+      if (playerRef.current && videoId) {
+        playerRef.current.loadVideoById(item.videoId);
+        // Only update URL for reference, not videoId (keeps component stable)
+        setVideoUrl(item.url);
+        setLocalVideoUrl(null);
+        setLocalVideoName('');
+
+        // Handle random time seek for loadVideoById case
+        if (shouldRandomSeek) {
+          setTimeout(() => {
+            if (playerRef.current) {
+              const duration = playerRef.current.getDuration();
+              if (duration > 0) {
+                const randomTime = Math.random() * duration * 0.8;
+                playerRef.current.seekTo(randomTime, true);
+              }
+              pendingRandomSeek.current = false;
+            }
+          }, 1000); // Wait for video to load
+        }
+      } else {
+        // No player yet - set state to create component (handlePlayerReady will handle seek)
+        setVideoId(item.videoId);
+        setVideoUrl(item.url);
+        setLocalVideoUrl(null);
+        setLocalVideoName('');
+      }
+    }
+  };
+
+  // Navigate playlist
+  const playlistNext = () => {
+    if (!activePlaylist || activePlaylist.items.length === 0) return;
+
+    let nextIndex: number;
+
+    if (activePlaylist.startRandom) {
+      // Random mode - pick a random video (different from current if possible)
+      if (activePlaylist.items.length === 1) {
+        nextIndex = 0;
+      } else {
+        do {
+          nextIndex = Math.floor(Math.random() * activePlaylist.items.length);
+        } while (nextIndex === playlistIndex);
+      }
+    } else {
+      // Sequential mode
+      nextIndex = playlistIndex + 1;
+      if (nextIndex >= activePlaylist.items.length) {
+        if (activePlaylist.loop) {
+          nextIndex = 0;
+        } else {
+          return; // End of playlist
+        }
+      }
+    }
+
+    setPlaylistIndex(nextIndex);
+    loadPlaylistItem(activePlaylist.items[nextIndex]);
+  };
+
+  const playlistPrev = () => {
+    if (!activePlaylist || activePlaylist.items.length === 0) return;
+
+    let prevIndex = playlistIndex - 1;
+    if (prevIndex < 0) {
+      if (activePlaylist.loop) {
+        prevIndex = activePlaylist.items.length - 1;
+      } else {
+        return; // Start of playlist
+      }
+    }
+    setPlaylistIndex(prevIndex);
+    loadPlaylistItem(activePlaylist.items[prevIndex]);
+  };
+
+  const playlistGoTo = (index: number) => {
+    if (!activePlaylist || index < 0 || index >= activePlaylist.items.length) return;
+    setPlaylistIndex(index);
+    loadPlaylistItem(activePlaylist.items[index]);
+  };
+
+  const exitPlaylistMode = () => {
+    setIsPlaylistMode(false);
+    setActivePlaylist(null);
+    setPlaylistIndex(0);
+  };
+
+  // Add current video to a playlist
+  const addCurrentVideoToPlaylist = (playlistId: string) => {
+    if (!videoId && !localVideoUrl) return;
+
+    const item: PlaylistItem = {
+      id: Date.now().toString(),
+      videoId: videoId || '',
+      url: localVideoUrl || videoUrl,
+      title: localVideoName || currentVideo?.title || 'Untitled Video',
+      isLocalFile: !!localVideoUrl,
+      localFileName: localVideoName || undefined,
+    };
+
+    addVideoToPlaylist(playlistId, item);
+  };
+
+  // Open playlist modal for creating/editing
+  const openPlaylistModal = (playlist?: Playlist) => {
+    if (playlist) {
+      setEditingPlaylist(playlist);
+      setPlaylistName(playlist.name);
+    } else {
+      setEditingPlaylist(null);
+      setPlaylistName('');
+    }
+    setShowPlaylistModal(true);
+  };
+
+  const closePlaylistModal = () => {
+    setShowPlaylistModal(false);
+    setEditingPlaylist(null);
+    setPlaylistName('');
+  };
+
+  const savePlaylistModal = () => {
+    if (editingPlaylist) {
+      renamePlaylist(editingPlaylist.id, playlistName);
+    } else {
+      createPlaylist(playlistName);
+    }
+    closePlaylistModal();
+  };
+
+  // Audio Mixer functions - Main video volume control
+  const updateMainVideoVolume = (volume: number) => {
+    setMainVideoVolume(volume);
+    if (playerRef.current) {
+      playerRef.current.setVolume(volume);
+    }
+    if (localVideoRef.current) {
+      localVideoRef.current.volume = volume / 100;
+    }
+  };
+
+  const toggleMainVideoMute = () => {
+    const newMuted = !mainVideoMuted;
+    setMainVideoMuted(newMuted);
+    if (playerRef.current) {
+      if (newMuted) {
+        playerRef.current.mute();
+      } else {
+        playerRef.current.unMute();
+        playerRef.current.setVolume(mainVideoVolume);
+      }
+    }
+    if (localVideoRef.current) {
+      localVideoRef.current.muted = newMuted;
+    }
+  };
+
+  // Ambient audio channel functions
+  const setAmbientAudio = async (youtubeUrl: string) => {
+    const id = extractVideoId(youtubeUrl);
+    if (!id) {
+      alert('Invalid YouTube URL');
+      return;
+    }
+
+    // Fetch title
+    let title = 'Loading...';
+    try {
+      const response = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        title = data.title || 'Ambient Audio';
+      }
+    } catch (err) {
+      console.error('Failed to fetch video title:', err);
+      title = 'Ambient Audio';
+    }
+
+    // Use loadVideoById on existing player to avoid remounting component
+    if (ambientPlayerRef.current && ambientVideoId) {
+      ambientPlayerRef.current.loadVideoById(id);
+      ambientPlayerRef.current.playVideo();
+      // Update current ID for UI, but NOT ambientVideoId (keeps component stable)
+      setCurrentAmbientId(id);
+      setAmbientVideoTitle(title);
+      setAmbientPlaying(true);
+    } else {
+      // No player yet, set both states to create component
+      setAmbientVideoId(id);
+      setCurrentAmbientId(id);
+      setAmbientVideoTitle(title);
+      setAmbientPlaying(true);
+    }
+  };
+
+  const clearAmbientAudio = () => {
+    setAmbientVideoId(null);
+    setCurrentAmbientId(null);
+    setAmbientVideoTitle('');
+    setAmbientVideoUrl('');
+    ambientPlayerRef.current = null;
+  };
+
+  const updateAmbientVolume = (volume: number) => {
+    setAmbientVolume(volume);
+    if (ambientPlayerRef.current) {
+      ambientPlayerRef.current.setVolume(volume);
+    }
+  };
+
+  const toggleAmbientMute = () => {
+    const newMuted = !ambientMuted;
+    setAmbientMuted(newMuted);
+    if (ambientPlayerRef.current) {
+      if (newMuted) {
+        ambientPlayerRef.current.mute();
+      } else {
+        ambientPlayerRef.current.unMute();
+        ambientPlayerRef.current.setVolume(ambientVolume);
+      }
+    }
+  };
+
+  const toggleAmbientPlay = () => {
+    const newPlaying = !ambientPlaying;
+    setAmbientPlaying(newPlaying);
+    if (ambientPlayerRef.current) {
+      if (newPlaying) {
+        ambientPlayerRef.current.playVideo();
+      } else {
+        ambientPlayerRef.current.pauseVideo();
+      }
+    }
+  };
+
+  const handleAmbientPlayerReady = (event: YouTubeEvent) => {
+    ambientPlayerRef.current = event.target;
+    ambientPlayerRef.current.setVolume(ambientVolume);
+    if (ambientMuted) {
+      ambientPlayerRef.current.mute();
+    }
+    if (ambientPlaying) {
+      ambientPlayerRef.current.playVideo();
+    }
+  };
+
+  const handleAmbientPlayerEnd = () => {
+    // Loop the ambient audio
+    if (ambientPlayerRef.current) {
+      ambientPlayerRef.current.seekTo(0);
+      ambientPlayerRef.current.playVideo();
+    }
+  };
+
+  // Save current ambient sound to library
+  const saveCurrentAmbientSound = () => {
+    if (!currentAmbientId || !ambientVideoTitle) return;
+
+    // Check if already saved
+    if (appData.ambientSounds?.some(s => s.videoId === currentAmbientId)) {
+      alert('This ambient sound is already saved');
+      return;
+    }
+
+    const newSound: AmbientSound = {
+      id: Date.now().toString(),
+      videoId: currentAmbientId,
+      title: ambientVideoTitle,
+    };
+
+    setAppData(prev => ({
+      ...prev,
+      ambientSounds: [...(prev.ambientSounds || []), newSound],
+    }));
+  };
+
+  // Load a saved ambient sound
+  const loadAmbientSound = (sound: AmbientSound) => {
+    // Use loadVideoById on existing player to avoid remounting component
+    if (ambientPlayerRef.current && ambientVideoId) {
+      ambientPlayerRef.current.loadVideoById(sound.videoId);
+      ambientPlayerRef.current.playVideo();
+      // Update current ID for UI, but NOT ambientVideoId (keeps component stable)
+      setCurrentAmbientId(sound.videoId);
+      setAmbientVideoTitle(sound.title);
+      setAmbientPlaying(true);
+    } else {
+      // No player yet, set both states to create component
+      setAmbientVideoId(sound.videoId);
+      setCurrentAmbientId(sound.videoId);
+      setAmbientVideoTitle(sound.title);
+      setAmbientPlaying(true);
+    }
+  };
+
+  // Edit a saved ambient sound's name
+  const editAmbientSoundName = (id: string) => {
+    const sound = appData.ambientSounds?.find(s => s.id === id);
+    if (!sound) return;
+
+    const newName = prompt('Enter custom name for this ambient sound:', sound.title);
+    if (newName && newName.trim()) {
+      setAppData(prev => ({
+        ...prev,
+        ambientSounds: (prev.ambientSounds || []).map(s =>
+          s.id === id ? { ...s, title: newName.trim() } : s
+        ),
+      }));
+      // Update current title if this is the playing sound
+      if (currentAmbientId === sound.videoId) {
+        setAmbientVideoTitle(newName.trim());
+      }
+    }
+  };
+
+  // Delete a saved ambient sound
+  const deleteAmbientSound = (id: string) => {
+    setAppData(prev => ({
+      ...prev,
+      ambientSounds: (prev.ambientSounds || []).filter(s => s.id !== id),
+    }));
   };
 
   // Show export modal
@@ -1159,10 +1876,70 @@ function App() {
     }
   };
 
+  // Share playlist via URL
+  const handleSharePlaylist = async (playlist: Playlist) => {
+    if (playlist.items.length === 0) {
+      alert('Cannot share an empty playlist');
+      return;
+    }
+
+    // Check for local videos
+    const hasLocalVideos = playlist.items.some(item => item.isLocalFile);
+    if (hasLocalVideos) {
+      alert('Note: Local video files cannot be shared via URL. Recipients will need to link their own video files.');
+    }
+
+    // Create compact playlist data
+    const compactPlaylist: CompactPlaylistData = {
+      n: playlist.name,
+      i: playlist.items.map(item => ({
+        v: item.videoId,
+        u: item.isLocalFile ? '' : item.url, // Don't include blob URLs
+        t: item.title,
+        ...(item.isLocalFile ? { l: true, f: item.localFileName } : {}),
+      })),
+      lp: playlist.loop,
+      ...(playlist.startRandom ? { sr: true } : {}),
+      ...(playlist.randomTime ? { rt: true } : {}),
+      ...(appData.ambientSounds && appData.ambientSounds.length > 0 ? {
+        as: appData.ambientSounds.map(sound => ({
+          v: sound.videoId,
+          t: sound.title,
+        }))
+      } : {}),
+    };
+
+    try {
+      // Compress and encode
+      const jsonStr = JSON.stringify(compactPlaylist);
+      const compressed = pako.deflate(jsonStr);
+      let binaryStr = '';
+      for (let i = 0; i < compressed.length; i++) {
+        binaryStr += String.fromCharCode(compressed[i]);
+      }
+      const base64 = btoa(binaryStr);
+      const urlSafe = base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      const shareUrl = `${window.location.origin}${window.location.pathname}?p=${urlSafe}`;
+
+      if (shareUrl.length > 8000) {
+        alert(`URL is too long (${shareUrl.length} chars). Try reducing the number of videos in the playlist.`);
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      alert(`Playlist share URL copied to clipboard! (${shareUrl.length} characters)\n\nAnyone with this link can play this playlist.`);
+    } catch (err) {
+      console.error('Share playlist error:', err);
+      alert('Failed to create share URL.');
+    }
+  };
+
   // Load shared data from URL on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const data = params.get('d');
+    const playlistData = params.get('p');
 
     if (data) {
       try {
@@ -1228,6 +2005,97 @@ function App() {
       } catch (err) {
         console.error('Failed to load shared data:', err);
       }
+    } else if (playlistData) {
+      // Load shared playlist
+      try {
+        const base64 = playlistData.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+        const binaryStr = atob(padded);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        const decompressed = pako.inflate(bytes, { to: 'string' });
+        const compactPlaylist: CompactPlaylistData = JSON.parse(decompressed);
+
+        // Convert to Playlist format
+        const sharedPlaylist: Playlist = {
+          id: `shared_${Date.now()}`,
+          name: compactPlaylist.n,
+          items: compactPlaylist.i.map((item, idx) => ({
+            id: `item_${idx}`,
+            videoId: item.v,
+            url: item.u,
+            title: item.t,
+            isLocalFile: item.l,
+            localFileName: item.f,
+          })),
+          createdAt: Date.now(),
+          loop: compactPlaylist.lp,
+          startRandom: compactPlaylist.sr,
+          randomTime: compactPlaylist.rt,
+        };
+
+        // Load ambient sounds if included
+        if (compactPlaylist.as && compactPlaylist.as.length > 0) {
+          const sharedAmbientSounds: AmbientSound[] = compactPlaylist.as.map((sound, idx) => ({
+            id: `ambient_${Date.now()}_${idx}`,
+            videoId: sound.v,
+            title: sound.t,
+          }));
+          setAppData(prev => ({
+            ...prev,
+            ambientSounds: sharedAmbientSounds,
+          }));
+          // Auto-play first ambient sound
+          const firstAmbient = sharedAmbientSounds[0];
+          setAmbientVideoId(firstAmbient.videoId);
+          setCurrentAmbientId(firstAmbient.videoId);
+          setAmbientVideoTitle(firstAmbient.title);
+          setAmbientPlaying(true);
+        }
+
+        // Check if there are local videos that need linking
+        const localItems = sharedPlaylist.items.filter(item => item.isLocalFile);
+        if (localItems.length > 0) {
+          alert(`This playlist contains ${localItems.length} local video(s). You'll need to link them to files on your computer.`);
+        }
+
+        // Start playing the playlist
+        let startIndex = 0;
+        if (sharedPlaylist.startRandom && sharedPlaylist.items.length > 0) {
+          startIndex = Math.floor(Math.random() * sharedPlaylist.items.length);
+        }
+        // Find first playable (skip local videos for now)
+        const firstPlayableIndex = sharedPlaylist.items.findIndex((item, idx) =>
+          !item.isLocalFile && (sharedPlaylist.startRandom ? idx === startIndex : true)
+        );
+        const actualStartIndex = firstPlayableIndex >= 0 ? firstPlayableIndex :
+          sharedPlaylist.items.findIndex(item => !item.isLocalFile);
+
+        if (actualStartIndex >= 0) {
+          setActivePlaylist(sharedPlaylist);
+          setPlaylistIndex(actualStartIndex);
+          setIsPlaylistMode(true);
+          const item = sharedPlaylist.items[actualStartIndex];
+          setVideoId(item.videoId);
+          setVideoUrl(item.url);
+          setLocalVideoUrl(null);
+          setLocalVideoName('');
+          setCurrentVideo(null);
+          setGeneralNotes('');
+          setAnnotations([]);
+          setSidebarTab('playlists');
+        } else {
+          alert('This playlist only contains local videos. Cannot play automatically.');
+        }
+
+        // Clear the URL parameter
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (err) {
+        console.error('Failed to load shared playlist:', err);
+      }
     }
   }, []);
 
@@ -1265,7 +2133,7 @@ function App() {
             setLinkedLocalVideos(new Map());
             setShowImportModal(true);
           } else {
-            setAppData({ folders: data.folders, videos: data.videos });
+            setAppData({ folders: data.folders, videos: data.videos, playlists: data.playlists || [] });
           }
         } else {
           alert('Invalid backup file format');
@@ -1377,7 +2245,7 @@ function App() {
         return video;
       });
 
-      setAppData({ folders: pendingImportData.folders, videos: updatedVideos });
+      setAppData({ folders: pendingImportData.folders, videos: updatedVideos, playlists: pendingImportData.playlists || [] });
     } else if (localVideosToLink.length === 1 && currentVideo) {
       // Single video re-linking (when clicking on an unlinked local video)
       const linkedUrl = linkedLocalVideos.get(localVideosToLink[0].id);
@@ -1450,8 +2318,24 @@ function App() {
     setIsEditingNotes(false);
   };
 
+  // Fetch YouTube video title using oEmbed API
+  const fetchYouTubeTitle = async (videoId: string): Promise<string> => {
+    try {
+      const response = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        return data.title || '';
+      }
+    } catch (err) {
+      console.error('Failed to fetch video title:', err);
+    }
+    return '';
+  };
+
   // Video player handlers
-  const handleLoadVideo = () => {
+  const handleLoadVideo = async () => {
     const id = extractVideoId(videoUrl);
     setVideoId(id);
     setLocalVideoUrl(null);
@@ -1459,6 +2343,13 @@ function App() {
     setCurrentVideo(null);
     setGeneralNotes('');
     setAnnotations([]);
+    setFetchedVideoTitle('');
+
+    // Fetch the video title
+    if (id) {
+      const title = await fetchYouTubeTitle(id);
+      setFetchedVideoTitle(title);
+    }
   };
 
   const handleLoadLocalFile = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1485,6 +2376,41 @@ function App() {
 
   const handlePlayerReady = (event: YouTubeEvent) => {
     playerRef.current = event.target;
+    // Set volume based on mixer settings
+    if (playerRef.current) {
+      playerRef.current.setVolume(mainVideoVolume);
+      if (mainVideoMuted) {
+        playerRef.current.mute();
+      }
+      // Explicitly start playback in playlist mode (autoplay can be unreliable)
+      if (isPlaylistMode) {
+        playerRef.current.playVideo();
+
+        // Handle random time seek after video starts
+        if (pendingRandomSeek.current) {
+          // Wait a bit for duration to be available, then seek
+          setTimeout(() => {
+            if (playerRef.current && pendingRandomSeek.current) {
+              const duration = playerRef.current.getDuration();
+              if (duration > 0) {
+                // Seek to random point between 0% and 80% of the video
+                const randomTime = Math.random() * duration * 0.8;
+                playerRef.current.seekTo(randomTime, true);
+              }
+              pendingRandomSeek.current = false;
+            }
+          }, 500);
+        }
+      }
+    }
+  };
+
+  // Handle video end - auto-advance in playlist mode
+  const handleVideoEnd = () => {
+    if (isPlaylistMode && activePlaylist && activePlaylist.items.length > 0) {
+      // Auto-advance to next video (respects shuffle and loop settings)
+      playlistNext();
+    }
   };
 
   const handleAddAnnotation = useCallback(async () => {
@@ -1534,7 +2460,7 @@ function App() {
     height: '100%',
     width: '100%',
     playerVars: {
-      autoplay: 0 as const,
+      autoplay: (isPlaylistMode ? 1 : 0) as 0 | 1,
     },
   };
 
@@ -1551,9 +2477,15 @@ function App() {
             New
           </button>
           <button
-            onClick={handleShare}
+            onClick={() => {
+              if (isPlaylistMode && activePlaylist) {
+                handleSharePlaylist(activePlaylist);
+              } else {
+                handleShare();
+              }
+            }}
             className="header-btn share-btn"
-            title="Share via URL"
+            title={isPlaylistMode ? "Share playlist via URL" : "Share via URL"}
           >
             Share
           </button>
@@ -1584,114 +2516,162 @@ function App() {
       <div className="app-body">
         {/* Sidebar */}
         <aside className="sidebar" style={{ width: sidebarWidth }}>
-          <div className="sidebar-header">
-            <h3>Library</h3>
+          <div className="sidebar-tabs">
             <button
-              onClick={() => setShowNewFolderInput(true)}
-              className="new-folder-btn"
-              title="New folder"
+              className={`sidebar-tab ${sidebarTab === 'annotations' ? 'active' : ''}`}
+              onClick={() => setSidebarTab('annotations')}
             >
-              + Folder
+              Annotations
+            </button>
+            <button
+              className={`sidebar-tab ${sidebarTab === 'playlists' ? 'active' : ''}`}
+              onClick={() => setSidebarTab('playlists')}
+            >
+              Playlists
             </button>
           </div>
 
-          {showNewFolderInput && (
-            <div className="new-folder-input">
-              <input
-                type="text"
-                placeholder="Folder name..."
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newFolderName.trim()) {
-                    createFolder(null, newFolderName.trim());
-                    setNewFolderName('');
-                    setShowNewFolderInput(false);
-                  }
-                  if (e.key === 'Escape') {
-                    setShowNewFolderInput(false);
-                    setNewFolderName('');
-                  }
-                }}
-                autoFocus
-              />
-              <button
-                onClick={() => {
-                  if (newFolderName.trim()) {
-                    createFolder(null, newFolderName.trim());
-                    setNewFolderName('');
-                  }
-                  setShowNewFolderInput(false);
-                }}
-              >
-                ✓
-              </button>
-              <button
-                onClick={() => {
-                  setShowNewFolderInput(false);
-                  setNewFolderName('');
-                }}
-              >
-                ×
-              </button>
-            </div>
-          )}
-
-          <div
-            className="folder-tree"
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (draggedItem?.type === 'folder') {
-                setRootDropZoneActive(true);
-              }
-            }}
-            onDragLeave={(e) => {
-              // Only deactivate if leaving the folder-tree entirely
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                setRootDropZoneActive(false);
-              }
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (draggedItem?.type === 'folder') {
-                handleDrop(null);
-              }
-            }}
-          >
-            {rootDropZoneActive && draggedItem?.type === 'folder' && (
-              <div className="root-drop-zone">
-                Drop here to move to root level
+          {sidebarTab === 'annotations' ? (
+            <>
+              <div className="sidebar-header">
+                <h3>Library</h3>
+                <button
+                  onClick={() => setShowNewFolderInput(true)}
+                  className="new-folder-btn"
+                  title="New folder"
+                >
+                  + Folder
+                </button>
               </div>
-            )}
-            {rootFolders.length === 0 && !rootDropZoneActive ? (
-              <p className="no-folders">No folders yet. Create one to organize your videos.</p>
-            ) : (
-              rootFolders.map(folder => (
-                <FolderItem
-                  key={folder.id}
-                  folder={folder}
-                  folders={appData.folders}
-                  videos={appData.videos}
-                  selectedVideoId={currentVideo?.id || null}
-                  selectedFolderId={selectedFolderId}
-                  onSelectFolder={setSelectedFolderId}
-                  onSelectVideo={loadVideo}
-                  onToggleExpand={toggleFolderExpand}
-                  onCreateSubfolder={(parentId, name) => {
-                    createFolder(parentId, name);
-                  }}
-                  onDeleteFolder={deleteFolder}
-                  onRenameFolder={renameFolder}
-                  onDeleteVideo={deleteVideo}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                  onDrop={handleDrop}
-                  draggedItem={draggedItem}
-                  depth={0}
-                />
-              ))
-            )}
-          </div>
+
+              {showNewFolderInput && (
+                <div className="new-folder-input">
+                  <input
+                    type="text"
+                    placeholder="Folder name..."
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newFolderName.trim()) {
+                        createFolder(null, newFolderName.trim());
+                        setNewFolderName('');
+                        setShowNewFolderInput(false);
+                      }
+                      if (e.key === 'Escape') {
+                        setShowNewFolderInput(false);
+                        setNewFolderName('');
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => {
+                      if (newFolderName.trim()) {
+                        createFolder(null, newFolderName.trim());
+                        setNewFolderName('');
+                      }
+                      setShowNewFolderInput(false);
+                    }}
+                  >
+                    ✓
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowNewFolderInput(false);
+                      setNewFolderName('');
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              <div
+                className="folder-tree"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedItem?.type === 'folder') {
+                    setRootDropZoneActive(true);
+                  }
+                }}
+                onDragLeave={(e) => {
+                  // Only deactivate if leaving the folder-tree entirely
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setRootDropZoneActive(false);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggedItem?.type === 'folder') {
+                    handleDrop(null);
+                  }
+                }}
+              >
+                {rootDropZoneActive && draggedItem?.type === 'folder' && (
+                  <div className="root-drop-zone">
+                    Drop here to move to root level
+                  </div>
+                )}
+                {rootFolders.length === 0 && !rootDropZoneActive ? (
+                  <p className="no-folders">No folders yet. Create one to organize your videos.</p>
+                ) : (
+                  rootFolders.map(folder => (
+                    <FolderItem
+                      key={folder.id}
+                      folder={folder}
+                      folders={appData.folders}
+                      videos={appData.videos}
+                      selectedVideoId={currentVideo?.id || null}
+                      selectedFolderId={selectedFolderId}
+                      onSelectFolder={setSelectedFolderId}
+                      onSelectVideo={loadVideo}
+                      onToggleExpand={toggleFolderExpand}
+                      onCreateSubfolder={(parentId, name) => {
+                        createFolder(parentId, name);
+                      }}
+                      onDeleteFolder={deleteFolder}
+                      onRenameFolder={renameFolder}
+                      onDeleteVideo={deleteVideo}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      onDrop={handleDrop}
+                      draggedItem={draggedItem}
+                      depth={0}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="sidebar-header">
+                <h3>Playlists</h3>
+                <button
+                  onClick={() => openPlaylistModal()}
+                  className="new-folder-btn"
+                  title="New playlist"
+                >
+                  + Playlist
+                </button>
+              </div>
+
+              <div className="playlist-list">
+                {appData.playlists.length === 0 ? (
+                  <p className="no-folders">No playlists yet. Create one to queue videos.</p>
+                ) : (
+                  appData.playlists.map(playlist => (
+                    <PlaylistSidebarItem
+                      key={playlist.id}
+                      playlist={playlist}
+                      isActive={activePlaylist?.id === playlist.id}
+                      onPlay={() => playPlaylist(playlist)}
+                      onDelete={() => deletePlaylist(playlist.id)}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )}
           {/* Sidebar Resize Edge */}
           <div
             className={`panel-resize-edge ${isResizingSidebar ? 'active' : ''}`}
@@ -1702,6 +2682,78 @@ function App() {
         {/* Main Content */}
         <main className="main-content">
           <div className="video-section" ref={videoSectionRef}>
+            {/* Playlist Controls Bar */}
+            {isPlaylistMode && activePlaylist && (
+              <div className="playlist-controls-bar">
+                <div className="playlist-info-bar">
+                  <span className="playlist-now-playing">Now Playing: {activePlaylist.name}</span>
+                  <span className="playlist-position">
+                    {playlistIndex + 1} / {activePlaylist.items.length}
+                  </span>
+                  {!appData.playlists.some(p => p.id === activePlaylist.id) && (
+                    <button
+                      className="save-playlist-btn"
+                      onClick={() => {
+                        setAppData(prev => ({
+                          ...prev,
+                          playlists: [...prev.playlists, activePlaylist],
+                        }));
+                        alert('Playlist saved to your library!');
+                      }}
+                      title="Save playlist to library"
+                    >
+                      💾 Save Playlist
+                    </button>
+                  )}
+                </div>
+                <div className="playlist-nav-controls">
+                  <button
+                    onClick={playlistPrev}
+                    disabled={!activePlaylist.loop && playlistIndex === 0}
+                    className="playlist-nav-btn"
+                    title="Previous"
+                  >
+                    ⏮
+                  </button>
+                  <button
+                    onClick={() => togglePlaylistLoop(activePlaylist.id)}
+                    className={`playlist-loop-btn ${activePlaylist.loop ? 'active' : ''}`}
+                    title={activePlaylist.loop ? 'Disable loop' : 'Enable loop'}
+                  >
+                    🔁
+                  </button>
+                  <button
+                    onClick={() => togglePlaylistStartRandom(activePlaylist.id)}
+                    className={`playlist-shuffle-btn ${activePlaylist.startRandom ? 'active' : ''}`}
+                    title={activePlaylist.startRandom ? 'Disable random/shuffle' : 'Enable random/shuffle'}
+                  >
+                    🔀
+                  </button>
+                  <button
+                    onClick={() => togglePlaylistRandomTime(activePlaylist.id)}
+                    className={`playlist-random-time-btn ${activePlaylist.randomTime ? 'active' : ''}`}
+                    title={activePlaylist.randomTime ? 'Disable random start time' : 'Enable random start time'}
+                  >
+                    ⏱️
+                  </button>
+                  <button
+                    onClick={playlistNext}
+                    disabled={!activePlaylist.loop && !activePlaylist.startRandom && playlistIndex === activePlaylist.items.length - 1}
+                    className="playlist-nav-btn"
+                    title="Next"
+                  >
+                    ⏭
+                  </button>
+                  <button
+                    onClick={exitPlaylistMode}
+                    className="playlist-exit-btn"
+                    title="Exit playlist mode"
+                  >
+                    ✕ Exit
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="aspect-ratio-controls">
               {ASPECT_RATIOS.map((ratio) => (
                 <button
@@ -1730,17 +2782,21 @@ function App() {
             >
               {videoId ? (
                 <YouTube
+                  key={videoId}
                   videoId={videoId}
                   opts={opts}
                   onReady={handlePlayerReady}
+                  onEnd={handleVideoEnd}
                   className="youtube-player"
                 />
               ) : localVideoUrl ? (
                 <video
+                  key={localVideoUrl}
                   ref={localVideoRef}
                   src={localVideoUrl}
                   controls
                   className="local-video-player"
+                  onEnded={handleVideoEnd}
                 />
               ) : (
                 <div className="video-placeholder">
@@ -1754,123 +2810,403 @@ function App() {
             >
               <span>⋯</span>
             </div>
-          </div>
 
-          <div className="notes-section" style={{ width: notesWidth }}>
-            {/* Notes Panel Resize Edge */}
-            <div
-              className={`panel-resize-edge left ${isResizingNotes ? 'active' : ''}`}
-              onMouseDown={handleNotesResizeStart}
-            />
-            <div className="video-input-panel">
-              <div className="video-input-row">
-                <input
-                  type="text"
-                  placeholder="Paste YouTube URL or video ID..."
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleLoadVideo()}
-                />
-                <button onClick={handleLoadVideo}>Load</button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="video/*"
-                  onChange={handleLoadLocalFile}
-                  style={{ display: 'none' }}
-                />
+            {/* Audio Mixer - only in playlist mode */}
+            {isPlaylistMode && (
+            <div className="audio-mixer-integrated">
+              {/* Main Video Volume */}
+              <div className="mixer-channel main-channel">
+                <span className="channel-label">Video</span>
                 <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="load-file-btn"
-                  title="Load local video file"
+                  className={`mixer-mute-btn ${mainVideoMuted ? 'muted' : ''}`}
+                  onClick={toggleMainVideoMute}
+                  title={mainVideoMuted ? 'Unmute' : 'Mute'}
                 >
-                  📁 File
+                  {mainVideoMuted ? '🔇' : '🔊'}
                 </button>
-                {(videoId || localVideoUrl) && (
-                  <button onClick={openSaveDialog} className="save-video-btn">
-                    {currentVideo ? 'Save As' : 'Save'}
-                  </button>
-                )}
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={mainVideoVolume}
+                  onChange={(e) => updateMainVideoVolume(parseInt(e.target.value))}
+                  className="mixer-volume-slider"
+                  title={`Volume: ${mainVideoVolume}%`}
+                />
+                <span className="mixer-volume-value">{mainVideoVolume}%</span>
               </div>
-              {localVideoName && (
-                <div className="local-file-name">
-                  Playing: {localVideoName}
-                </div>
-              )}
-            </div>
 
-            <div className="panel general-notes">
-              <div className="panel-header">
-                <h2>General Notes</h2>
-                {!isEditingNotes && (
-                  <button className="edit-notes-btn" onClick={handleEditNotes}>
-                    ✎
-                  </button>
-                )}
-              </div>
-              <div className="panel-content">
-                {isEditingNotes ? (
+              {/* Ambient Audio Channel */}
+              <div className="mixer-channel ambient-channel">
+                <span className="channel-label">Ambient</span>
+                {currentAmbientId ? (
                   <>
-                    <textarea
-                      placeholder="Write your general notes about this video here..."
-                      value={editNotesValue}
-                      onChange={(e) => setEditNotesValue(e.target.value)}
-                      autoFocus
+                    <button
+                      className={`mixer-play-btn ${ambientPlaying ? 'playing' : ''}`}
+                      onClick={toggleAmbientPlay}
+                      title={ambientPlaying ? 'Pause' : 'Play'}
+                    >
+                      {ambientPlaying ? '⏸' : '▶'}
+                    </button>
+                    <button
+                      className={`mixer-mute-btn ${ambientMuted ? 'muted' : ''}`}
+                      onClick={toggleAmbientMute}
+                      title={ambientMuted ? 'Unmute' : 'Mute'}
+                    >
+                      {ambientMuted ? '🔇' : '🔊'}
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={ambientVolume}
+                      onChange={(e) => updateAmbientVolume(parseInt(e.target.value))}
+                      className="mixer-volume-slider"
+                      title={`Volume: ${ambientVolume}%`}
                     />
-                    <div className="notes-actions">
-                      <button onClick={handleSaveNotes} className="save-btn">Save</button>
-                      <button onClick={handleCancelNotes} className="cancel-btn">Cancel</button>
-                    </div>
+                    <span className="mixer-volume-value">{ambientVolume}%</span>
+                    <span className="ambient-title" title={ambientVideoTitle}>
+                      {ambientVideoTitle}
+                    </span>
+                    {(() => {
+                      const savedSound = appData.ambientSounds?.find(s => s.videoId === currentAmbientId);
+                      if (savedSound) {
+                        // Already saved - show edit button
+                        return (
+                          <button
+                            className="ambient-edit-btn"
+                            onClick={() => editAmbientSoundName(savedSound.id)}
+                            title="Edit name"
+                          >
+                            ✎
+                          </button>
+                        );
+                      } else {
+                        // Not saved - show save button
+                        return (
+                          <button
+                            className="ambient-save-btn"
+                            onClick={saveCurrentAmbientSound}
+                            title="Save to library"
+                          >
+                            💾
+                          </button>
+                        );
+                      }
+                    })()}
+                    <button
+                      className="mixer-remove-btn"
+                      onClick={clearAmbientAudio}
+                      title="Remove ambient audio"
+                    >
+                      ×
+                    </button>
                   </>
                 ) : (
-                  <div className="notes-display">
-                    {generalNotes ? (
-                      <p>{generalNotes}</p>
+                  <div className="ambient-add-section">
+                    {showAmbientUrlInput ? (
+                      /* URL input mode */
+                      <div className="ambient-add">
+                        <input
+                          type="text"
+                          placeholder="Paste YouTube URL..."
+                          value={ambientVideoUrl}
+                          onChange={(e) => setAmbientVideoUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && ambientVideoUrl.trim()) {
+                              setAmbientAudio(ambientVideoUrl);
+                              setAmbientVideoUrl('');
+                              setShowAmbientUrlInput(false);
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            if (ambientVideoUrl.trim()) {
+                              setAmbientAudio(ambientVideoUrl);
+                              setAmbientVideoUrl('');
+                              setShowAmbientUrlInput(false);
+                            }
+                          }}
+                        >
+                          Add
+                        </button>
+                        <button
+                          className="ambient-cancel-btn"
+                          onClick={() => {
+                            setShowAmbientUrlInput(false);
+                            setAmbientVideoUrl('');
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     ) : (
-                      <p className="placeholder-text">No notes yet. Click edit to add notes.</p>
+                      /* Default: dropdown + Add New button */
+                      <div className="ambient-saved-sounds">
+                        <select
+                          onChange={(e) => {
+                            const sound = appData.ambientSounds?.find(s => s.id === e.target.value);
+                            if (sound) {
+                              loadAmbientSound(sound);
+                            }
+                            e.target.value = '';
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="" disabled>
+                            {(appData.ambientSounds?.length || 0) > 0 ? 'Select ambient...' : 'No saved sounds'}
+                          </option>
+                          {appData.ambientSounds?.map(sound => (
+                            <option key={sound.id} value={sound.id}>
+                              {sound.title}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="ambient-add-new-btn"
+                          onClick={() => setShowAmbientUrlInput(true)}
+                          title="Add new ambient sound"
+                        >
+                          +
+                        </button>
+                        {(appData.ambientSounds?.length || 0) > 0 && (
+                          <button
+                            className="ambient-manage-btn"
+                            onClick={() => {
+                              const toDelete = prompt('Enter the name of the ambient sound to delete (or cancel):');
+                              if (toDelete) {
+                                const sound = appData.ambientSounds?.find(s =>
+                                  s.title.toLowerCase().includes(toDelete.toLowerCase())
+                                );
+                                if (sound) {
+                                  deleteAmbientSound(sound.id);
+                                } else {
+                                  alert('Sound not found');
+                                }
+                              }
+                            }}
+                            title="Delete saved sound"
+                          >
+                            🗑
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
               </div>
             </div>
+            )}
+          </div>
 
-            <div className="panel annotations">
-              <div className="panel-header">
-                <h2>Timestamped Annotations</h2>
-              </div>
-              <div className="add-annotation">
-                <input
-                  type="text"
-                  placeholder="Add a note at current time..."
-                  value={newAnnotation}
-                  onChange={(e) => setNewAnnotation(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddAnnotation()}
-                  disabled={!videoId && !localVideoUrl}
-                />
-                <button onClick={handleAddAnnotation} disabled={!videoId && !localVideoUrl}>
-                  Add Note
-                </button>
-              </div>
-
-              <div className="panel-content annotations-list">
-                {annotations.length === 0 ? (
-                  <p className="no-annotations">
-                    No annotations yet. Play the video and add notes at specific timestamps.
-                  </p>
-                ) : (
-                  annotations.map((annotation) => (
-                    <AnnotationItem
-                      key={annotation.id}
-                      annotation={annotation}
-                      onPlay={handlePlay}
-                      onDelete={handleDeleteAnnotation}
-                      onUpdate={handleUpdateAnnotation}
-                    />
-                  ))
-                )}
+          {isPlaylistMode && activePlaylist ? (
+            /* Playlist Mode - Simple panel with video list */
+            <div className="notes-section playlist-panel" style={{ width: notesWidth }}>
+              <div
+                className={`panel-resize-edge left ${isResizingNotes ? 'active' : ''}`}
+                onMouseDown={handleNotesResizeStart}
+              />
+              <div className="panel playlist-videos-panel">
+                <div className="panel-header">
+                  <h2>{activePlaylist.name}</h2>
+                  <span className="playlist-video-count">{activePlaylist.items.length} videos</span>
+                </div>
+                <div className="playlist-add-video">
+                  <input
+                    type="text"
+                    placeholder="Paste YouTube URL to add..."
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && videoUrl.trim()) {
+                        addYouTubeToPlaylist(activePlaylist.id, videoUrl);
+                        setVideoUrl('');
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (videoUrl.trim()) {
+                        addYouTubeToPlaylist(activePlaylist.id, videoUrl);
+                        setVideoUrl('');
+                      }
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="panel-content playlist-video-list">
+                  {activePlaylist.items.length === 0 ? (
+                    <p className="no-annotations">
+                      No videos in playlist. Add videos using the input above.
+                    </p>
+                  ) : (
+                    activePlaylist.items.map((item, index) => (
+                      <div
+                        key={item.id}
+                        className={`playlist-video-item ${index === playlistIndex ? 'playing' : ''}`}
+                        onClick={() => playlistGoTo(index)}
+                      >
+                        <span className="playlist-video-index">{index + 1}</span>
+                        <span className="playlist-video-title">{item.title}</span>
+                        <div className="playlist-video-actions">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              reorderPlaylistItem(activePlaylist.id, index, Math.max(0, index - 1));
+                            }}
+                            disabled={index === 0}
+                            title="Move up"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              reorderPlaylistItem(activePlaylist.id, index, Math.min(activePlaylist.items.length - 1, index + 1));
+                            }}
+                            disabled={index === activePlaylist.items.length - 1}
+                            title="Move down"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeVideoFromPlaylist(activePlaylist.id, item.id);
+                            }}
+                            className="remove-btn"
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            /* Annotation Mode - Full notes and annotations panels */
+            <div className="notes-section" style={{ width: notesWidth }}>
+              {/* Notes Panel Resize Edge */}
+              <div
+                className={`panel-resize-edge left ${isResizingNotes ? 'active' : ''}`}
+                onMouseDown={handleNotesResizeStart}
+              />
+              <div className="video-input-panel">
+                <div className="video-input-row">
+                  <input
+                    type="text"
+                    placeholder="Paste YouTube URL or video ID..."
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleLoadVideo()}
+                  />
+                  <button onClick={handleLoadVideo}>Load</button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="video/*"
+                    onChange={handleLoadLocalFile}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="load-file-btn"
+                    title="Load local video file"
+                  >
+                    📁 File
+                  </button>
+                  {(videoId || localVideoUrl) && (
+                    <button onClick={openSaveDialog} className="save-video-btn">
+                      {currentVideo ? 'Save As' : 'Save'}
+                    </button>
+                  )}
+                </div>
+                {localVideoName && (
+                  <div className="local-file-name">
+                    Playing: {localVideoName}
+                  </div>
+                )}
+              </div>
+
+              <div className="panel general-notes">
+                <div className="panel-header">
+                  <h2>General Notes</h2>
+                  {!isEditingNotes && (
+                    <button className="edit-notes-btn" onClick={handleEditNotes}>
+                      ✎
+                    </button>
+                  )}
+                </div>
+                <div className="panel-content">
+                  {isEditingNotes ? (
+                    <>
+                      <textarea
+                        placeholder="Write your general notes about this video here..."
+                        value={editNotesValue}
+                        onChange={(e) => setEditNotesValue(e.target.value)}
+                        autoFocus
+                      />
+                      <div className="notes-actions">
+                        <button onClick={handleSaveNotes} className="save-btn">Save</button>
+                        <button onClick={handleCancelNotes} className="cancel-btn">Cancel</button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="notes-display">
+                      {generalNotes ? (
+                        <p>{generalNotes}</p>
+                      ) : (
+                        <p className="placeholder-text">No notes yet. Click edit to add notes.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="panel annotations">
+                <div className="panel-header">
+                  <h2>Timestamped Annotations</h2>
+                </div>
+                <div className="add-annotation">
+                  <input
+                    type="text"
+                    placeholder="Add a note at current time..."
+                    value={newAnnotation}
+                    onChange={(e) => setNewAnnotation(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddAnnotation()}
+                    disabled={!videoId && !localVideoUrl}
+                  />
+                  <button onClick={handleAddAnnotation} disabled={!videoId && !localVideoUrl}>
+                    Add Note
+                  </button>
+                </div>
+
+                <div className="panel-content annotations-list">
+                  {annotations.length === 0 ? (
+                    <p className="no-annotations">
+                      No annotations yet. Play the video and add notes at specific timestamps.
+                    </p>
+                  ) : (
+                    annotations.map((annotation) => (
+                      <AnnotationItem
+                        key={annotation.id}
+                        annotation={annotation}
+                        onPlay={handlePlay}
+                        onDelete={handleDeleteAnnotation}
+                        onUpdate={handleUpdateAnnotation}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -2134,6 +3470,107 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Playlist Modal */}
+      {showPlaylistModal && (
+        <div className="modal-overlay" onClick={closePlaylistModal}>
+          <div className="modal playlist-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingPlaylist ? 'Edit Playlist' : 'New Playlist'}</h3>
+            <div className="playlist-form">
+              <label>Name</label>
+              <input
+                type="text"
+                placeholder="Playlist name..."
+                value={playlistName}
+                onChange={(e) => setPlaylistName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && savePlaylistModal()}
+                autoFocus
+              />
+
+              {editingPlaylist && (
+                <>
+                  <label>Videos ({editingPlaylist.items.length})</label>
+                  <div className="playlist-items-list">
+                    {editingPlaylist.items.length === 0 ? (
+                      <p className="no-items">No videos in this playlist yet.</p>
+                    ) : (
+                      editingPlaylist.items.map((item, index) => (
+                        <div key={item.id} className="playlist-item-row">
+                          <span className="item-index">{index + 1}.</span>
+                          <span className="item-title">{item.title}</span>
+                          <div className="item-actions">
+                            <button
+                              onClick={() => reorderPlaylistItem(editingPlaylist.id, index, Math.max(0, index - 1))}
+                              disabled={index === 0}
+                              title="Move up"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              onClick={() => reorderPlaylistItem(editingPlaylist.id, index, Math.min(editingPlaylist.items.length - 1, index + 1))}
+                              disabled={index === editingPlaylist.items.length - 1}
+                              title="Move down"
+                            >
+                              ↓
+                            </button>
+                            <button
+                              onClick={() => removeVideoFromPlaylist(editingPlaylist.id, item.id)}
+                              title="Remove"
+                              className="remove-item-btn"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="playlist-loop-toggle">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={editingPlaylist.loop}
+                        onChange={() => togglePlaylistLoop(editingPlaylist.id)}
+                      />
+                      Loop playlist
+                    </label>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button onClick={savePlaylistModal} className="save-btn" disabled={!playlistName.trim() && !editingPlaylist}>
+                {editingPlaylist ? 'Save' : 'Create'}
+              </button>
+              <button onClick={closePlaylistModal} className="cancel-btn">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Persistent Ambient Audio Player - outside main content to avoid re-renders */}
+      {ambientVideoId && (
+        <div className="ambient-audio-player-container">
+          <YouTube
+            key="ambient-player"
+            videoId={ambientVideoId}
+            opts={{
+              height: '1',
+              width: '1',
+              playerVars: {
+                autoplay: 1,
+                controls: 0,
+                loop: 1,
+                playlist: ambientVideoId,
+              },
+            }}
+            onReady={handleAmbientPlayerReady}
+            onEnd={handleAmbientPlayerEnd}
+          />
+        </div>
+      )}
+
     </div>
   );
 }

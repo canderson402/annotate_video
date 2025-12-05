@@ -1484,3 +1484,828 @@ body {
   font-size: 0.85rem;
   font-style: italic;
 }
+
+/* Sidebar Tabs */
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid #0f3460;
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 0.75rem;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.sidebar-tab:hover {
+  color: #eee;
+  background-color: rgba(233, 69, 96, 0.1);
+}
+
+.sidebar-tab.active {
+  color: #e94560;
+  border-bottom-color: #e94560;
+}
+
+/* Playlist Sidebar */
+.playlist-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.playlist-sidebar-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.playlist-sidebar-item:hover {
+  background-color: rgba(233, 69, 96, 0.1);
+}
+
+.playlist-sidebar-item.active {
+  background-color: rgba(233, 69, 96, 0.2);
+  border-left: 3px solid #e94560;
+}
+
+.playlist-sidebar-main {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.playlist-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.playlist-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.playlist-name {
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playlist-count {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.loop-indicator {
+  font-size: 0.8rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.playlist-actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+.playlist-actions button {
+  background: transparent;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.playlist-actions button:hover {
+  color: #eee;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Playlist Controls Bar */
+.playlist-controls-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background-color: #0f3460;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.playlist-info-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.save-playlist-btn {
+  margin-top: 0.25rem;
+  padding: 0.3rem 0.6rem;
+  background-color: #e94560;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+
+.save-playlist-btn:hover {
+  background-color: #ff6b6b;
+}
+
+.playlist-now-playing {
+  font-size: 0.9rem;
+  color: #e94560;
+  font-weight: 500;
+}
+
+.playlist-position {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.playlist-nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.playlist-nav-btn {
+  background-color: #16213e;
+  border: 1px solid #0f3460;
+  color: #eee;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.playlist-nav-btn:hover:not(:disabled) {
+  background-color: #1a1a2e;
+  border-color: #e94560;
+}
+
+.playlist-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.playlist-loop-btn {
+  background-color: #16213e;
+  border: 1px solid #0f3460;
+  color: #888;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.playlist-loop-btn.active {
+  color: #e94560;
+  border-color: #e94560;
+}
+
+.playlist-loop-btn:hover {
+  background-color: #1a1a2e;
+}
+
+.playlist-shuffle-btn,
+.playlist-random-btn,
+.playlist-random-time-btn {
+  background-color: #16213e;
+  border: 1px solid #0f3460;
+  color: #888;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.playlist-shuffle-btn.active,
+.playlist-random-time-btn.active {
+  color: #4ecdc4;
+  border-color: #4ecdc4;
+}
+
+.playlist-shuffle-btn:hover,
+.playlist-random-btn:hover,
+.playlist-random-time-btn:hover {
+  background-color: #1a1a2e;
+}
+
+.playlist-random-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.playlist-exit-btn {
+  background-color: transparent;
+  border: 1px solid #666;
+  color: #888;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.playlist-exit-btn:hover {
+  border-color: #e94560;
+  color: #e94560;
+}
+
+/* Playlist Modal */
+.playlist-modal {
+  max-width: 500px;
+}
+
+.playlist-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.playlist-form label {
+  font-size: 0.85rem;
+  color: #888;
+  margin-top: 0.5rem;
+}
+
+.playlist-form input[type="text"] {
+  padding: 0.75rem;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background-color: #16213e;
+  color: #eee;
+  font-size: 0.9rem;
+}
+
+.playlist-form input[type="text"]:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.playlist-items-list {
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background-color: #16213e;
+}
+
+.playlist-items-list .no-items {
+  padding: 1rem;
+  color: #888;
+  text-align: center;
+  font-style: italic;
+}
+
+.playlist-item-row {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #0f3460;
+  gap: 0.5rem;
+}
+
+.playlist-item-row:last-child {
+  border-bottom: none;
+}
+
+.item-index {
+  color: #888;
+  font-size: 0.85rem;
+  width: 1.5rem;
+  flex-shrink: 0;
+}
+
+.item-title {
+  flex: 1;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.item-actions button {
+  background: transparent;
+  border: 1px solid #0f3460;
+  color: #888;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.item-actions button:hover:not(:disabled) {
+  border-color: #e94560;
+  color: #eee;
+}
+
+.item-actions button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.item-actions .remove-item-btn:hover {
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+.playlist-loop-toggle {
+  margin-top: 0.5rem;
+}
+
+.playlist-loop-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: #eee;
+  font-size: 0.9rem;
+}
+
+.playlist-loop-toggle input[type="checkbox"] {
+  accent-color: #e94560;
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Add to Playlist Floating Dropdown */
+.add-to-playlist-floating {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 100;
+}
+
+.add-to-playlist-floating select {
+  padding: 0.5rem 1rem;
+  border: 1px solid #e94560;
+  border-radius: 6px;
+  background-color: #16213e;
+  color: #eee;
+  font-size: 0.85rem;
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.add-to-playlist-floating select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.3);
+}
+
+/* Playlist Panel (when in playlist mode) */
+.playlist-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.playlist-videos-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.playlist-videos-panel .panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.playlist-video-count {
+  font-size: 0.85rem;
+  color: #888;
+  font-weight: normal;
+}
+
+.playlist-controls {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.playlist-control-btn {
+  padding: 0.4rem 0.75rem;
+  background-color: #1a1a2e;
+  color: #888;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.playlist-control-btn:hover {
+  background-color: #0f3460;
+  color: #eee;
+}
+
+.playlist-control-btn.active {
+  background-color: #e94560;
+  color: #fff;
+  border-color: #e94560;
+}
+
+.playlist-add-video {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background-color: #16213e;
+  border-bottom: 1px solid #0f3460;
+}
+
+.playlist-add-video input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background-color: #1a1a2e;
+  color: #eee;
+  font-size: 0.85rem;
+}
+
+.playlist-add-video input:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.playlist-add-video button {
+  padding: 0.5rem 0.75rem;
+  background-color: #0f3460;
+  border: 1px solid #e94560;
+  color: #eee;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.playlist-add-video button:hover {
+  background-color: #e94560;
+}
+
+.playlist-video-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.playlist-video-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  gap: 0.5rem;
+  border-bottom: 1px solid #0f3460;
+}
+
+.playlist-video-item:hover {
+  background-color: rgba(233, 69, 96, 0.1);
+}
+
+.playlist-video-item.playing {
+  background-color: rgba(233, 69, 96, 0.2);
+  border-left: 3px solid #e94560;
+}
+
+.playlist-video-index {
+  color: #888;
+  font-size: 0.85rem;
+  min-width: 1.5rem;
+  flex-shrink: 0;
+}
+
+.playlist-video-title {
+  flex: 1;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.local-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  background-color: #0f3460;
+  border-radius: 3px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.playlist-video-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.playlist-video-item:hover .playlist-video-actions {
+  opacity: 1;
+}
+
+.playlist-video-actions button {
+  background: transparent;
+  border: 1px solid #0f3460;
+  color: #888;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+
+.playlist-video-actions button:hover:not(:disabled) {
+  border-color: #e94560;
+  color: #eee;
+}
+
+.playlist-video-actions button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.playlist-video-actions button.remove-btn:hover {
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+/* Audio Mixer - Integrated below video */
+.audio-mixer-integrated {
+  background: #0f3460;
+  border-radius: 0 0 8px 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mixer-channel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #1a1a2e;
+  border-radius: 6px;
+}
+
+.channel-label {
+  font-size: 0.75rem;
+  color: #e94560;
+  font-weight: 600;
+  min-width: 50px;
+  text-transform: uppercase;
+}
+
+.mixer-hidden-player {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mixer-play-btn,
+.mixer-mute-btn {
+  background: transparent;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #888;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+  min-width: 28px;
+  text-align: center;
+}
+
+.mixer-play-btn:hover,
+.mixer-mute-btn:hover {
+  border-color: #e94560;
+  color: #eee;
+}
+
+.mixer-play-btn.playing {
+  color: #4ecdc4;
+  border-color: #4ecdc4;
+}
+
+.mixer-mute-btn.muted {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
+}
+
+.mixer-volume-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #16213e;
+  border-radius: 2px;
+  cursor: pointer;
+  min-width: 80px;
+  max-width: 150px;
+}
+
+.mixer-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #e94560;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.mixer-volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.mixer-volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #e94560;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.mixer-volume-value {
+  font-size: 0.7rem;
+  color: #888;
+  min-width: 32px;
+  text-align: right;
+}
+
+.ambient-title {
+  font-size: 0.75rem;
+  color: #aaa;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 0.5rem;
+}
+
+.mixer-remove-btn {
+  background: transparent;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #888;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: all 0.2s;
+}
+
+.mixer-remove-btn:hover {
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+.ambient-add {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.ambient-add input {
+  flex: 1;
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #eee;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.ambient-add input:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.ambient-add button {
+  background: #e94560;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.2s;
+}
+
+.ambient-add button:hover {
+  background: #d63850;
+}
+
+/* Ambient sounds saved list */
+.ambient-add-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.ambient-saved-sounds {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ambient-saved-sounds select {
+  flex: 1;
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #eee;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.ambient-saved-sounds select:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.ambient-save-btn,
+.ambient-edit-btn,
+.ambient-manage-btn,
+.ambient-add-new-btn,
+.ambient-cancel-btn {
+  background: transparent;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #888;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+  min-width: 28px;
+  text-align: center;
+}
+
+.ambient-save-btn:hover,
+.ambient-edit-btn:hover,
+.ambient-add-new-btn:hover {
+  border-color: #4ecdc4;
+  color: #4ecdc4;
+}
+
+.ambient-manage-btn:hover {
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+.ambient-cancel-btn:hover {
+  border-color: #888;
+  color: #eee;
+}
+
+/* Persistent ambient audio player - hidden but always mounted */
+.ambient-audio-player-container {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
