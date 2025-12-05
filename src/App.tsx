@@ -1355,7 +1355,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>YouTube Notes</h1>
+        <h1>Scorevision Annotate</h1>
         <div className="header-actions">
           <button
             onClick={handleShare}
