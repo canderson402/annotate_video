@@ -719,6 +719,9 @@ function App() {
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isResizingNotes, setIsResizingNotes] = useState(false);
 
+  // Mobile sidebar state
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   // Drag and drop state
   const [draggedItem, setDraggedItem] = useState<DragItem | null>(null);
   const [rootDropZoneActive, setRootDropZoneActive] = useState(false);
@@ -2766,6 +2769,13 @@ function App() {
   return (
     <div className="app">
       <header className="header">
+        <button
+          className="mobile-menu-toggle"
+          onClick={() => setMobileSidebarOpen(true)}
+          title="Open menu"
+        >
+          ☰
+        </button>
         <h1>Video Util</h1>
         <div className="header-actions">
           {sidebarTab !== 'playlists' && (
@@ -2815,12 +2825,40 @@ function App() {
       </header>
 
       <div className="app-body">
+        {/* Mobile sidebar overlay */}
+        <div
+          className={`sidebar-overlay ${mobileSidebarOpen ? 'visible' : ''}`}
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+
         {/* Sidebar */}
-        <aside className="sidebar" style={{ width: sidebarWidth }}>
+        <aside className={`sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`} style={{ width: sidebarWidth }}>
+          <button
+            className="sidebar-close-btn"
+            onClick={() => setMobileSidebarOpen(false)}
+            title="Close menu"
+          >
+            ×
+          </button>
           <div className="sidebar-tabs">
             <button
               className={`sidebar-tab ${sidebarTab === 'annotations' ? 'active' : ''}`}
-              onClick={() => setSidebarTab('annotations')}
+              onClick={() => {
+                setSidebarTab('annotations');
+                // Exit playlist mode and start fresh when switching to annotations
+                if (isPlaylistMode) {
+                  setIsPlaylistMode(false);
+                  setActivePlaylist(null);
+                  setPlaylistIndex(0);
+                  setVideoId(null);
+                  setVideoUrl('');
+                  setLocalVideoUrl(null);
+                  setLocalVideoName('');
+                  setGeneralNotes('');
+                  setAnnotations([]);
+                  setCurrentVideo(null);
+                }
+              }}
             >
               Annotations
             </button>
@@ -2925,7 +2963,7 @@ function App() {
                       selectedVideoId={currentVideo?.id || null}
                       selectedFolderId={selectedFolderId}
                       onSelectFolder={setSelectedFolderId}
-                      onSelectVideo={loadVideo}
+                      onSelectVideo={(video) => { loadVideo(video); setMobileSidebarOpen(false); }}
                       onToggleExpand={toggleFolderExpand}
                       onCreateSubfolder={(parentId, name) => {
                         createFolder(parentId, name);
@@ -2965,7 +3003,7 @@ function App() {
                       key={playlist.id}
                       playlist={playlist}
                       isActive={activePlaylist?.id === playlist.id}
-                      onPlay={() => playPlaylist(playlist)}
+                      onPlay={() => { playPlaylist(playlist); setMobileSidebarOpen(false); }}
                       onDelete={() => deletePlaylist(playlist.id)}
                     />
                   ))

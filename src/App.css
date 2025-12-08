@@ -2342,3 +2342,452 @@ body {
   opacity: 0;
   pointer-events: none;
 }
+
+/* ========================================
+   MOBILE RESPONSIVE STYLES
+   ======================================== */
+
+/* Mobile menu toggle button */
+.mobile-menu-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  color: #e94560;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+/* Mobile sidebar overlay */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+}
+
+.sidebar-overlay.visible {
+  display: block;
+}
+
+/* Mobile close button for sidebar */
+.sidebar-close-btn {
+  display: none;
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 1.5rem;
+  cursor: pointer;
+  z-index: 10;
+}
+
+/* Tablet breakpoint - 1024px and below */
+@media (max-width: 1024px) {
+  .notes-section {
+    width: 300px;
+  }
+
+  .sidebar {
+    width: 240px;
+  }
+}
+
+/* Mobile breakpoint - 768px and below */
+@media (max-width: 768px) {
+  /* Header adjustments */
+  .header {
+    padding: 0.5rem 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .header h1 {
+    font-size: 1rem;
+  }
+
+  .mobile-menu-toggle {
+    display: block;
+  }
+
+  .header-actions {
+    gap: 0.25rem;
+  }
+
+  .header-btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+  }
+
+  /* App body - stack vertically */
+  .app-body {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  /* Sidebar - slide in from left */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -100%;
+    width: 80%;
+    max-width: 320px;
+    height: 100vh;
+    z-index: 100;
+    transition: left 0.3s ease;
+    border-right: 1px solid #0f3460;
+  }
+
+  .sidebar.mobile-open {
+    left: 0;
+  }
+
+  .sidebar-close-btn {
+    display: block;
+  }
+
+  /* Hide resize edges on mobile */
+  .panel-resize-edge {
+    display: none;
+  }
+
+  .resize-handle {
+    display: none;
+  }
+
+  /* Main content - full width and scrollable */
+  .main-content {
+    flex-direction: column;
+    padding: 0.5rem;
+    overflow-y: auto;
+    min-height: auto;
+  }
+
+  /* Video section - take reasonable height */
+  .video-section {
+    min-height: auto;
+    flex: none;
+  }
+
+  .player-container {
+    aspect-ratio: 16/9 !important;
+    height: auto !important;
+  }
+
+  /* Aspect ratio controls - scroll horizontally */
+  .aspect-ratio-controls {
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    flex-wrap: nowrap;
+  }
+
+  .ratio-btn {
+    flex-shrink: 0;
+  }
+
+  /* Notes section - full width below video */
+  .notes-section {
+    width: 100% !important;
+    margin-left: 0;
+    margin-top: 0.5rem;
+    max-height: none;
+  }
+
+  .notes-section.playlist-panel {
+    width: 100% !important;
+  }
+
+  /* Video input panel */
+  .video-input-row {
+    flex-wrap: wrap;
+  }
+
+  .video-input-row input {
+    width: 100%;
+    flex: none;
+  }
+
+  .video-input-row button {
+    flex: 1;
+  }
+
+  /* Panels */
+  .panel {
+    margin-bottom: 0.5rem;
+  }
+
+  .general-notes {
+    max-height: 150px;
+  }
+
+  /* Playlist controls bar */
+  .playlist-controls-bar {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .playlist-info-bar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+  }
+
+  .playlist-nav-controls {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* Audio mixer */
+  .audio-mixer-integrated {
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .mixer-channel {
+    width: 100%;
+  }
+
+  .mixer-volume-slider {
+    flex: 1;
+  }
+
+  /* Modals */
+  .modal {
+    min-width: auto;
+    width: 95%;
+    max-width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+    margin: 1rem;
+  }
+
+  .modal-actions {
+    flex-wrap: wrap;
+  }
+
+  .modal-actions button {
+    flex: 1;
+    min-width: 80px;
+  }
+
+  /* Export options */
+  .export-options {
+    flex-direction: column;
+  }
+
+  .export-option-btn {
+    width: 100%;
+  }
+
+  /* Annotation items */
+  .annotation-item {
+    padding: 0.75rem;
+  }
+
+  .annotation-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .annotation-actions {
+    position: static;
+    margin-top: 0.5rem;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  /* No playlist selected */
+  .no-playlist-selected {
+    margin: 0.5rem;
+    min-height: 200px;
+  }
+
+  .no-playlist-icon {
+    font-size: 3rem;
+  }
+
+  .no-playlist-content h2 {
+    font-size: 1.25rem;
+  }
+
+  .no-playlist-content p {
+    font-size: 0.9rem;
+    padding: 0 1rem;
+  }
+
+  /* Playlist panel videos list */
+  .playlist-video-item {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .playlist-video-actions {
+    gap: 0.5rem;
+  }
+
+  .playlist-video-actions button {
+    padding: 0.4rem 0.6rem;
+    font-size: 1rem;
+  }
+
+  /* Save dialog folder list */
+  .folder-list {
+    max-height: 150px;
+  }
+
+  /* Import modal */
+  .import-modal {
+    max-height: 80vh;
+  }
+
+  .link-video-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .link-video-actions button {
+    width: 100%;
+  }
+}
+
+/* Small mobile breakpoint - 480px and below */
+@media (max-width: 480px) {
+  .header {
+    padding: 0.4rem 0.75rem;
+  }
+
+  .header h1 {
+    font-size: 0.9rem;
+  }
+
+  .header-btn {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .sidebar {
+    width: 90%;
+  }
+
+  .main-content {
+    padding: 0.25rem;
+  }
+
+  .video-input-row button {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .panel {
+    padding: 0.75rem;
+  }
+
+  .panel-header h2 {
+    font-size: 0.9rem;
+  }
+
+  .annotation-timestamp {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+  }
+
+  .annotation-title {
+    font-size: 0.85rem;
+  }
+
+  .add-annotation-form input {
+    padding: 0.5rem;
+  }
+
+  .add-annotation-form button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  /* Sidebar tabs */
+  .sidebar-tab {
+    padding: 0.6rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  /* Modal on small screens */
+  .modal {
+    padding: 1rem;
+  }
+
+  .modal h3 {
+    font-size: 1rem;
+  }
+
+  .modal-actions button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  /* Playlist controls */
+  .playlist-nav-btn,
+  .playlist-loop-btn,
+  .playlist-shuffle-btn,
+  .playlist-random-time-btn,
+  .playlist-exit-btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* Touch-friendly adjustments for all mobile */
+@media (hover: none) and (pointer: coarse) {
+  /* Larger touch targets */
+  .folder-row {
+    min-height: 44px;
+    padding: 0.75rem 0.5rem;
+  }
+
+  .video-item {
+    min-height: 44px;
+    padding: 0.6rem 0.5rem;
+  }
+
+  .playlist-sidebar-item {
+    min-height: 48px;
+    padding: 0.75rem 1rem;
+  }
+
+  .annotation-item {
+    padding: 1rem;
+  }
+
+  /* Hide folder/video actions by default, show on tap */
+  .folder-actions,
+  .video-edit-btn,
+  .video-delete-btn {
+    opacity: 1;
+  }
+
+  /* Better button sizing */
+  button {
+    min-height: 44px;
+  }
+
+  .header-btn {
+    min-height: 36px;
+  }
+
+  .ratio-btn {
+    min-height: 36px;
+    padding: 0.4rem 0.75rem;
+  }
+
+  /* Larger scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+}
