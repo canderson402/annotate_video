@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import YouTube, { YouTubePlayer, YouTubeEvent } from 'react-youtube';
 import pako from 'pako';
+import Visualizer from './Visualizer';
 import './App.css';
 
 // Compact format for URL sharing (short keys to save space)
@@ -721,6 +722,10 @@ function App() {
 
   // Mobile sidebar state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Visualizer state
+  const [visualizerEnabled, setVisualizerEnabled] = useState(false);
+  const [visualizerDebug, setVisualizerDebug] = useState(false);
 
   // Drag and drop state
   const [draggedItem, setDraggedItem] = useState<DragItem | null>(null);
@@ -2767,7 +2772,8 @@ function App() {
   };
 
   return (
-    <div className="app">
+    <div className={`app ${visualizerEnabled && isPlaylistMode ? 'visualizer-active' : ''}`}>
+      <Visualizer isActive={visualizerEnabled && isPlaylistMode} debug={visualizerDebug} />
       <header className="header">
         <button
           className="mobile-menu-toggle"
@@ -3086,6 +3092,22 @@ function App() {
                   >
                     ⏱️
                   </button>
+                  <button
+                    onClick={() => setVisualizerEnabled(!visualizerEnabled)}
+                    className={`visualizer-toggle ${visualizerEnabled ? 'active' : ''}`}
+                    title={visualizerEnabled ? 'Disable visualizer' : 'Enable visualizer'}
+                  >
+                    ✨
+                  </button>
+                  {visualizerEnabled && (
+                    <button
+                      onClick={() => setVisualizerDebug(!visualizerDebug)}
+                      className={`visualizer-toggle ${visualizerDebug ? 'active' : ''}`}
+                      title={visualizerDebug ? 'Disable debug mode' : 'Enable debug mode (manual mode switching)'}
+                    >
+                      🐛
+                    </button>
+                  )}
                   <button
                     onClick={playlistNext}
                     disabled={!activePlaylist.loop && !activePlaylist.startRandom && playlistIndex === activePlaylist.items.length - 1}

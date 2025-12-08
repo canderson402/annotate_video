@@ -2344,6 +2344,183 @@ body {
 }
 
 /* ========================================
+   VISUALIZER STYLES
+   ======================================== */
+
+.visualizer-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.visualizer-canvas.overlay-mode {
+  z-index: 9999;
+  opacity: 0.85;
+}
+
+/* Visualizer debug panel */
+.visualizer-debug {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #e94560;
+}
+
+.visualizer-mode-name {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #e94560;
+  min-width: 140px;
+  text-align: center;
+}
+
+.visualizer-next-btn {
+  padding: 0.5rem 1.5rem;
+  background: #e94560;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.visualizer-next-btn:hover {
+  background: #ff6b8a;
+}
+
+/* Visualizer toggle button */
+.visualizer-toggle {
+  background: transparent;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #888;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.visualizer-toggle:hover {
+  border-color: #e94560;
+  color: #e94560;
+}
+
+.visualizer-toggle.active {
+  background: rgba(233, 69, 96, 0.2);
+  border-color: #e94560;
+  color: #e94560;
+}
+
+/* Make panels semi-transparent when visualizer is active */
+.app.visualizer-active .sidebar {
+  background-color: rgba(22, 33, 62, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.app.visualizer-active .sidebar-tabs {
+  background-color: rgba(22, 33, 62, 0.3);
+}
+
+.app.visualizer-active .sidebar-header {
+  background-color: transparent;
+}
+
+.app.visualizer-active .main-content {
+  background-color: transparent;
+}
+
+.app.visualizer-active .video-section {
+  background-color: transparent;
+}
+
+.app.visualizer-active .notes-section .panel {
+  background-color: rgba(22, 33, 62, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.app.visualizer-active .video-input-panel {
+  background-color: rgba(22, 33, 62, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.app.visualizer-active .playlist-controls-bar {
+  background-color: rgba(22, 33, 62, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.app.visualizer-active .audio-mixer-integrated {
+  background-color: rgba(22, 33, 62, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.app.visualizer-active .header {
+  background-color: rgba(22, 33, 62, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.app.visualizer-active .no-playlist-selected {
+  background-color: rgba(22, 33, 62, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.app.visualizer-active .folder-tree {
+  background-color: transparent;
+}
+
+.app.visualizer-active .playlist-list {
+  background-color: transparent;
+}
+
+.app.visualizer-active .aspect-ratio-controls {
+  background-color: transparent;
+}
+
+.app.visualizer-active .player-container {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.app.visualizer-active .ratio-btn {
+  background-color: rgba(22, 33, 62, 0.5);
+}
+
+.app.visualizer-active .ratio-btn.active {
+  background-color: rgba(233, 69, 96, 0.7);
+}
+
+.app.visualizer-active .header-btn {
+  background-color: rgba(15, 52, 96, 0.5);
+}
+
+.app.visualizer-active .folder-row:hover {
+  background-color: rgba(233, 69, 96, 0.2);
+}
+
+.app.visualizer-active .playlist-sidebar-item:hover {
+  background-color: rgba(233, 69, 96, 0.2);
+}
+
+.app.visualizer-active .playlist-sidebar-item.active {
+  background-color: rgba(233, 69, 96, 0.3);
+}
+
+/* ========================================
    MOBILE RESPONSIVE STYLES
    ======================================== */
 
