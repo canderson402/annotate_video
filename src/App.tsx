@@ -41,6 +41,31 @@ interface CompactPlaylistData {
   as?: CompactAmbientSound[]; // ambientSounds
 }
 
+// Compact format for library URL sharing
+interface CompactFolder {
+  i: string;  // id
+  n: string;  // name
+  p: string | null; // parentId
+}
+
+interface CompactSavedVideo {
+  i: string;  // id
+  v: string;  // videoId
+  t: string;  // title
+  u: string;  // url
+  g: string;  // generalNotes
+  a: CompactAnnotation[]; // annotations
+  f?: string; // folderId (stored separately to link videos to folders)
+  l?: boolean; // isLocalFile
+  fn?: string; // localFileName
+}
+
+interface CompactLibraryData {
+  f: CompactFolder[];  // folders
+  v: CompactSavedVideo[]; // videos
+  p?: CompactPlaylistData[]; // playlists (optional)
+}
+
 // Data structures
 interface Annotation {
   id: string;
@@ -701,6 +726,7 @@ function App() {
   // Import/Export state
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Playlist state
   const [activePlaylist, setActivePlaylist] = useState<Playlist | null>(null);
@@ -1826,6 +1852,58 @@ function App() {
     setShowExportModal(false);
   };
 
+  // Export current playlist as JSON file
+  const exportCurrentPlaylist = () => {
+    if (!activePlaylist) {
+      alert('No playlist is currently active');
+      setShowExportModal(false);
+      return;
+    }
+
+    const exportData = {
+      playlist: activePlaylist,
+      exportedAt: new Date().toISOString(),
+      version: 3,
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `playlist-${activePlaylist.name.replace(/[^a-z0-9]/gi, '-')}-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowExportModal(false);
+  };
+
+  // Export all playlists as JSON file
+  const exportAllPlaylists = () => {
+    if (appData.playlists.length === 0) {
+      alert('No playlists to export');
+      setShowExportModal(false);
+      return;
+    }
+
+    const exportData = {
+      playlists: appData.playlists,
+      exportedAt: new Date().toISOString(),
+      version: 4,
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `playlists-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowExportModal(false);
+  };
+
   // Share via URL - compress and encode data
   const handleShare = async () => {
     if (!videoId && !localVideoUrl) {
@@ -1920,7 +1998,7 @@ function App() {
       const base64 = btoa(binaryStr);
       const urlSafe = base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-      const shareUrl = `${window.location.origin}${window.location.pathname}?p=${urlSafe}`;
+      const shareUrl = `${window.location.origin}${window.location.pathname}?view=playlist&p=${urlSafe}`;
 
       if (shareUrl.length > 8000) {
         alert(`URL is too long (${shareUrl.length} chars). Try reducing the number of videos in the playlist.`);
@@ -1933,6 +2011,82 @@ function App() {
       console.error('Share playlist error:', err);
       alert('Failed to create share URL.');
     }
+    setShowShareModal(false);
+  };
+
+  // Share entire library via URL
+  const handleShareLibrary = async () => {
+    if (appData.folders.length === 0 && appData.videos.length === 0 && appData.playlists.length === 0) {
+      alert('Library is empty - nothing to share');
+      return;
+    }
+
+    // Check for local videos
+    const hasLocalVideos = appData.videos.some(v => v.isLocalFile);
+    if (hasLocalVideos) {
+      alert('Note: Local video files cannot be shared via URL. Recipients will need to link their own video files.');
+    }
+
+    // Create compact library data
+    const compactLibrary: CompactLibraryData = {
+      f: appData.folders.map(folder => ({
+        i: folder.id,
+        n: folder.name,
+        p: folder.parentId,
+      })),
+      v: appData.videos.map(video => ({
+        i: video.id,
+        v: video.videoId,
+        t: video.title,
+        u: video.isLocalFile ? '' : video.url,
+        g: video.generalNotes,
+        a: video.annotations.map(ann => ({
+          t: ann.timestamp,
+          n: ann.title,
+          ...(ann.description ? { d: ann.description } : {}),
+        })),
+        ...(video.isLocalFile ? { l: true, fn: video.localFileName } : {}),
+      })),
+      ...(appData.playlists.length > 0 ? {
+        p: appData.playlists.map(playlist => ({
+          n: playlist.name,
+          i: playlist.items.map(item => ({
+            v: item.videoId,
+            u: item.isLocalFile ? '' : item.url,
+            t: item.title,
+            ...(item.isLocalFile ? { l: true, f: item.localFileName } : {}),
+          })),
+          lp: playlist.loop,
+          ...(playlist.startRandom ? { sr: true } : {}),
+          ...(playlist.randomTime ? { rt: true } : {}),
+        })),
+      } : {}),
+    };
+
+    try {
+      const jsonStr = JSON.stringify(compactLibrary);
+      const compressed = pako.deflate(jsonStr);
+      let binaryStr = '';
+      for (let i = 0; i < compressed.length; i++) {
+        binaryStr += String.fromCharCode(compressed[i]);
+      }
+      const base64 = btoa(binaryStr);
+      const urlSafe = base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      const shareUrl = `${window.location.origin}${window.location.pathname}?view=playlist&lib=${urlSafe}`;
+
+      if (shareUrl.length > 8000) {
+        alert(`URL is too long (${shareUrl.length} chars). Your library is too large to share via URL. Use Export instead.`);
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      alert(`Library share URL copied to clipboard! (${shareUrl.length} characters)\n\nAnyone with this link can import your library (${appData.videos.length} videos, ${appData.folders.length} folders, ${appData.playlists.length} playlists).`);
+    } catch (err) {
+      console.error('Share library error:', err);
+      alert('Failed to create share URL. Your library may be too large - try Export instead.');
+    }
+    setShowShareModal(false);
   };
 
   // Load shared data from URL on mount
@@ -1940,6 +2094,12 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const data = params.get('d');
     const playlistData = params.get('p');
+
+    // Check for view parameter to set initial sidebar tab
+    const view = params.get('view');
+    if (view === 'playlist' || view === 'playlists') {
+      setSidebarTab('playlists');
+    }
 
     if (data) {
       try {
@@ -2089,12 +2249,119 @@ function App() {
           setSidebarTab('playlists');
         } else {
           alert('This playlist only contains local videos. Cannot play automatically.');
+          setSidebarTab('playlists');
         }
 
         // Clear the URL parameter
         window.history.replaceState({}, '', window.location.pathname);
       } catch (err) {
         console.error('Failed to load shared playlist:', err);
+      }
+    }
+
+    // Load shared library
+    const libraryData = params.get('lib');
+    if (libraryData) {
+      try {
+        const base64 = libraryData.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+        const binaryStr = atob(padded);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        const decompressed = pako.inflate(bytes, { to: 'string' });
+        const compactLibrary: CompactLibraryData = JSON.parse(decompressed);
+
+        // Generate new IDs to avoid conflicts with existing items
+        const timestamp = Date.now();
+        const idMap = new Map<string, string>(); // Map old folder IDs to new ones
+
+        // Convert folders with new IDs
+        const newFolders: Folder[] = compactLibrary.f.map((folder, idx) => {
+          const newId = `imported_${timestamp}_folder_${idx}`;
+          idMap.set(folder.i, newId);
+          return {
+            id: newId,
+            name: folder.n,
+            parentId: null, // Will be remapped below
+            isExpanded: true,
+          };
+        });
+
+        // Remap parent IDs
+        newFolders.forEach((folder, idx) => {
+          const originalParentId = compactLibrary.f[idx].p;
+          if (originalParentId && idMap.has(originalParentId)) {
+            folder.parentId = idMap.get(originalParentId)!;
+          }
+        });
+
+        // Convert videos with new IDs and remapped folder references
+        const newVideos: SavedVideo[] = compactLibrary.v.map((video, idx) => {
+          // Extract the folder ID from the original video ID
+          const originalFolderId = video.i.split('/').slice(0, -1).join('/');
+          const newFolderId = idMap.get(originalFolderId) || (newFolders.length > 0 ? newFolders[0].id : null);
+          const newId = newFolderId ? `${newFolderId}/${timestamp}_${idx}` : `imported_${timestamp}_video_${idx}`;
+
+          return {
+            id: newId,
+            videoId: video.v,
+            title: video.t,
+            url: video.u,
+            generalNotes: video.g,
+            annotations: video.a.map((ann, annIdx) => ({
+              id: `imported_${timestamp}_ann_${idx}_${annIdx}`,
+              timestamp: ann.t,
+              title: ann.n,
+              description: ann.d,
+            })),
+            createdAt: timestamp + idx,
+            isLocalFile: video.l,
+            localFileName: video.fn,
+          };
+        });
+
+        // Convert playlists if present
+        const newPlaylists: Playlist[] = compactLibrary.p?.map((playlist, idx) => ({
+          id: `imported_${timestamp}_playlist_${idx}`,
+          name: playlist.n,
+          items: playlist.i.map((item, itemIdx) => ({
+            id: `imported_${timestamp}_item_${idx}_${itemIdx}`,
+            videoId: item.v,
+            url: item.u,
+            title: item.t,
+            isLocalFile: item.l,
+            localFileName: item.f,
+          })),
+          createdAt: timestamp + idx,
+          loop: playlist.lp,
+          startRandom: playlist.sr,
+          randomTime: playlist.rt,
+        })) || [];
+
+        // Merge with existing library (add, don't replace)
+        setAppData(prev => ({
+          ...prev,
+          folders: [...prev.folders, ...newFolders],
+          videos: [...prev.videos, ...newVideos],
+          playlists: [...prev.playlists, ...newPlaylists],
+        }));
+
+        // Check for local videos that need linking
+        const localVideos = newVideos.filter(v => v.isLocalFile);
+        if (localVideos.length > 0) {
+          alert(`Imported ${newVideos.length} video(s), ${newFolders.length} folder(s), and ${newPlaylists.length} playlist(s).\n\nNote: ${localVideos.length} local video(s) need to be linked to files on your computer.`);
+        } else {
+          alert(`Imported ${newVideos.length} video(s), ${newFolders.length} folder(s), and ${newPlaylists.length} playlist(s) into your library.`);
+        }
+
+        // Clear the URL parameter
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (err) {
+        console.error('Failed to load shared library:', err);
+        alert('Failed to load shared library. The URL may be corrupted.');
       }
     }
   }, []);
@@ -2109,8 +2376,40 @@ function App() {
       try {
         const data = JSON.parse(e.target?.result as string);
 
+        // Handle single playlist format (version 3)
+        if (data.playlist && data.version === 3) {
+          const playlist = data.playlist as Playlist;
+          // Generate new ID to avoid conflicts
+          const importedPlaylist: Playlist = {
+            ...playlist,
+            id: `imported_${Date.now()}`,
+            createdAt: Date.now(),
+          };
+          setAppData(prev => ({
+            ...prev,
+            playlists: [...prev.playlists, importedPlaylist],
+          }));
+          alert(`Imported playlist "${importedPlaylist.name}" with ${importedPlaylist.items.length} videos.`);
+          setSidebarTab('playlists');
+        }
+        // Handle all playlists format (version 4)
+        else if (data.playlists && data.version === 4) {
+          const playlists = data.playlists as Playlist[];
+          const timestamp = Date.now();
+          const importedPlaylists: Playlist[] = playlists.map((playlist, idx) => ({
+            ...playlist,
+            id: `imported_${timestamp}_${idx}`,
+            createdAt: timestamp + idx,
+          }));
+          setAppData(prev => ({
+            ...prev,
+            playlists: [...prev.playlists, ...importedPlaylists],
+          }));
+          alert(`Imported ${importedPlaylists.length} playlist(s).`);
+          setSidebarTab('playlists');
+        }
         // Handle new single-video format (version 2)
-        if (data.video && data.version === 2) {
+        else if (data.video && data.version === 2) {
           const video = data.video as SavedVideo;
           setPendingImportVideo(video);
           setImportTargetFolderId(appData.folders.length > 0 ? appData.folders[0].id : null);
@@ -2467,19 +2766,21 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Scorevision Annotate</h1>
+        <h1>Video Util</h1>
         <div className="header-actions">
-          <button
-            onClick={handleNew}
-            className="header-btn new-btn"
-            title="Start new annotation"
-          >
-            New
-          </button>
+          {sidebarTab !== 'playlists' && (
+            <button
+              onClick={handleNew}
+              className="header-btn new-btn"
+              title="Start new annotation"
+            >
+              New
+            </button>
+          )}
           <button
             onClick={() => {
               if (isPlaylistMode && activePlaylist) {
-                handleSharePlaylist(activePlaylist);
+                setShowShareModal(true);
               } else {
                 handleShare();
               }
@@ -2681,6 +2982,17 @@ function App() {
 
         {/* Main Content */}
         <main className="main-content">
+          {/* Show placeholder when in playlist tab but no playlist is playing */}
+          {sidebarTab === 'playlists' && !activePlaylist ? (
+            <div className="no-playlist-selected">
+              <div className="no-playlist-content">
+                <span className="no-playlist-icon">🎵</span>
+                <h2>No Playlist Selected</h2>
+                <p>Select a playlist from the sidebar to start playing, or create a new one.</p>
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="video-section" ref={videoSectionRef}>
             {/* Playlist Controls Bar */}
             {isPlaylistMode && activePlaylist && (
@@ -3207,6 +3519,8 @@ function App() {
               </div>
             </div>
           )}
+          </>
+          )}
         </main>
       </div>
 
@@ -3439,31 +3753,98 @@ function App() {
             <h3>Export</h3>
             <p className="export-info">Choose what to export:</p>
             <div className="export-options">
+              {sidebarTab === 'playlists' ? (
+                <>
+                  <button
+                    onClick={exportCurrentPlaylist}
+                    className="export-option-btn"
+                    disabled={!activePlaylist}
+                  >
+                    <span className="export-option-icon">🎵</span>
+                    <span className="export-option-text">
+                      <strong>Current Playlist</strong>
+                      <small>{activePlaylist ? `Export "${activePlaylist.name}" (${activePlaylist.items.length} videos)` : 'No playlist selected'}</small>
+                    </span>
+                  </button>
+                  <button
+                    onClick={exportAllPlaylists}
+                    className="export-option-btn"
+                    disabled={appData.playlists.length === 0}
+                  >
+                    <span className="export-option-icon">📚</span>
+                    <span className="export-option-text">
+                      <strong>All Playlists</strong>
+                      <small>Export all {appData.playlists.length} playlist{appData.playlists.length !== 1 ? 's' : ''}</small>
+                    </span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={exportCurrentVideo}
+                    className="export-option-btn"
+                    disabled={!videoId && !localVideoUrl}
+                  >
+                    <span className="export-option-icon">🎬</span>
+                    <span className="export-option-text">
+                      <strong>Current Video</strong>
+                      <small>Export the currently loaded video with its annotations</small>
+                    </span>
+                  </button>
+                  <button
+                    onClick={exportEntireLibrary}
+                    className="export-option-btn"
+                    disabled={appData.folders.length === 0 && appData.videos.length === 0}
+                  >
+                    <span className="export-option-icon">📚</span>
+                    <span className="export-option-text">
+                      <strong>Entire Library</strong>
+                      <small>Export all folders and saved videos ({appData.videos.length} video{appData.videos.length !== 1 ? 's' : ''}, {appData.folders.length} folder{appData.folders.length !== 1 ? 's' : ''})</small>
+                    </span>
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowExportModal(false)} className="cancel-btn">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Modal (for playlist mode) */}
+      {showShareModal && activePlaylist && (
+        <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+          <div className="modal export-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Share</h3>
+            <p className="export-info">Choose what to share:</p>
+            <div className="export-options">
               <button
-                onClick={exportCurrentVideo}
+                onClick={() => handleSharePlaylist(activePlaylist)}
                 className="export-option-btn"
-                disabled={!videoId && !localVideoUrl}
               >
-                <span className="export-option-icon">🎬</span>
+                <span className="export-option-icon">🎵</span>
                 <span className="export-option-text">
-                  <strong>Current Video</strong>
-                  <small>Export the currently loaded video with its annotations</small>
+                  <strong>Current Playlist</strong>
+                  <small>Share "{activePlaylist.name}" ({activePlaylist.items.length} video{activePlaylist.items.length !== 1 ? 's' : ''})</small>
                 </span>
               </button>
               <button
-                onClick={exportEntireLibrary}
+                onClick={handleShareLibrary}
                 className="export-option-btn"
-                disabled={appData.folders.length === 0 && appData.videos.length === 0}
+                disabled={appData.folders.length === 0 && appData.videos.length === 0 && appData.playlists.length === 0}
               >
                 <span className="export-option-icon">📚</span>
                 <span className="export-option-text">
                   <strong>Entire Library</strong>
-                  <small>Export all folders and saved videos ({appData.videos.length} video{appData.videos.length !== 1 ? 's' : ''}, {appData.folders.length} folder{appData.folders.length !== 1 ? 's' : ''})</small>
+                  <small>Share all videos, folders, and playlists ({appData.videos.length} video{appData.videos.length !== 1 ? 's' : ''}, {appData.playlists.length} playlist{appData.playlists.length !== 1 ? 's' : ''})</small>
                 </span>
               </button>
             </div>
             <div className="modal-actions">
-              <button onClick={() => setShowExportModal(false)} className="cancel-btn">
+              <button onClick={() => setShowShareModal(false)} className="cancel-btn">
                 Cancel
               </button>
             </div>
